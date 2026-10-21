@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.lake/
+*.olean
+.DS_Store
+.env

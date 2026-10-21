@@ -1,0 +1,192 @@
+# The core schema. Every domain builds on this and re-declares none of it.
+#
+# Four things are domain-independent and belong here:
+#
+#   provenance   a fact is something a source recorded at a ledger time, and
+#                possibly retracted later. Nothing is ever deleted.
+#   decisions    a verdict about a subject, pinned to a snapshot hash, an
+#                as-of time and a rule version, so it can be replayed.
+#   evidence     `reliance` records the facts a verdict used, and `coverage`
+#                the items its snapshot looked at. Both are needed: reliance
+#                finds decisions hit by a RETRACTION, coverage finds decisions
+#                hit by an ADDITION they would have seen had it existed.
+#   provenance   `artifact`, `proof` and `governance` keep the checked proof
+#   of the proof  and the exact library it was checked against, so a decision
+#                can be re-verified from the store alone.
+#
+# Domain relations inherit `fact`, so a domain declares what it knows and gets
+# provenance, reliance and impact analysis without writing any of it.
+# `match $f isa fact, has fact-id $i;` then ranges over every domain's facts,
+# which is what makes the core queries domain-agnostic.
+#
+# Cardinality is `@card(1..1)` on everything an export reads. `owns` defaults
+# to 0..1, and a fact with no recorded time is neither before nor after any
+# date: it escapes every as-of filter and every impact query at once, silently
+# and permanently. Required or it is decoration.
+
+define
+
+  # ── provenance ──────────────────────────────────────────────────
+  attribute fact-id, value string;
+  attribute source, value string;
+  attribute recorded-at, value datetime;
+  attribute retracted-at, value datetime;
+
+  # ── decisions ───────────────────────────────────────────────────
+  attribute decision-id, value string;
+  attribute verdict, value string;
+  attribute snapshot-hash, value string;
+  attribute certificate-hash, value string;
+  attribute rule-version, value string;
+
+  # The rule's exact text hash answers "is this the same rule". It cannot
+  # answer "is this the same QUESTION", which is what a stored decision needs
+  # when a rule is edited: renaming a variable orphans every decision, and
+  # nothing can tell that apart from a changed threshold. `rule-shape` is a
+  # hash of the rule's STRUCTURE with names, prose, id and version dropped,
+  # so "same obligation, re-check" is distinguishable from "different
+  # obligation". Why3 makes the same distinction and it is the most useful
+  # thing it does (Bobot et al., VSTTE 2013).
+  attribute rule-shape, value string;
+
+  # WHICH of the decision procedure's three attempts settled this, so a
+  # stored verdict says how it was reached and not only that it was. Taken
+  # from `bv_decide`, which since Lean 4.29 records one axiom per
+  # computation rather than a single blanket "a solver said yes".
+  attribute decided-by, value string @values("witness", "negation", "evaluation");
+  attribute as-of, value datetime;
+  attribute decided-at, value datetime;
+
+  # ── the proof, and what it was checked against ──────────────────
+  attribute artifact-id, value string;
+  attribute artifact-kind, value string;
+  attribute lean-module, value string;
+  attribute lean-source, value string;
+  attribute source-sha256, value string;
+  attribute proof-id, value string;
+  attribute theorem-name, value string;
+  attribute statement, value string;
+  attribute proof-term, value string;
+  attribute proof-source, value string;
+  attribute axioms-used, value string;
+  attribute kernel-version, value string;
+
+  # Every domain fact is one of these. `retracted-at` is absent while the
+  # fact stands, which is what as-of filtering tests for.
+  relation fact @abstract,
+    owns fact-id @key,
+    owns source @card(1..1),
+    owns recorded-at @card(1..1),
+    owns retracted-at @card(0..1),
+    plays reliance:evidence;
+
+  # The ledger: one row holding the latest time any fact was recorded or
+  # retracted. It exists for two reasons.
+  #
+  # Reading it is O(1). The first version scanned every `recorded-at` and
+  # every `retracted-at` in the store on EVERY write, to check the clock had
+  # not gone backwards — O(all facts) of work for one scalar.
+  #
+  # Advancing it is a compare-and-set, and TWO different things make that
+  # safe depending on how the writes overlap. Measured on a live server:
+  #
+  #   sequential — the second writer starts after the first commits, so it
+  #     reads the new value, its `$h == <old>` matches NOTHING, and
+  #     `must_affect` turns that into a rollback.
+  #
+  #   overlapping — both writers read the old value in their own snapshot,
+  #     so BOTH matches succeed and neither sees a problem. What stops the
+  #     second is TypeDB locking `high-water` while it is being changed:
+  #     the later commit fails with an isolation conflict. The guard is at
+  #     commit time, not at the match.
+  #
+  # `@card(1..1)` is therefore load-bearing twice over — it makes the value
+  # required, and it is what gives the engine a single attribute to lock.
+  # Without the ledger, two concurrent writers both pass the clock check and
+  # record facts out of order, changing a snapshot already decided.
+  attribute ledger-id, value string;
+  attribute high-water, value datetime;
+
+  entity ledger,
+    owns ledger-id @key,
+    owns high-water @card(1..1);
+
+  # Anything a verdict can be about — and, necessarily, something a snapshot
+  # can be said to have looked at. A newly recorded fact is usually *about*
+  # the subject, so without `coverage:item` here the addition half of impact
+  # analysis can only reach a decision indirectly, through some other item
+  # the export happened to touch.
+  entity subject @abstract,
+    plays decision:subject,
+    plays coverage:item;
+
+  # `coverage:item` is left for domain types to play directly. An abstract
+  # `scoped` supertype would be tidier but TypeDB has single inheritance, so
+  # it would collide with any domain hierarchy that already has a root — and
+  # the core does not need the type anyway: it binds a covered item by its
+  # key attribute, which type inference resolves.
+
+  relation decision,
+    relates subject @card(1..1),
+    owns decision-id @key,
+    owns verdict @card(1..1),
+    owns snapshot-hash @card(1..1),
+    owns certificate-hash @card(1..1),
+    owns rule-version @card(1..1),
+    owns rule-shape @card(1..1),
+    owns decided-by @card(1..1),
+    owns as-of @card(1..1),
+    owns decided-at @card(1..1),
+    plays reliance:decision,
+    plays coverage:decision,
+    plays proved-by:decision,
+    plays governance:decision;
+
+  # `relates` defaults to @card(0..1) — the same trap as `owns`, and worse
+  # here: a reliance edge with a decision and NO evidence was schema-legal,
+  # which is a dangling link the impact queries would never see. The upper
+  # bound of 1 is also why these are written one edge per item rather than
+  # as one n-ary relation per decision.
+  relation reliance,
+    relates decision @card(1..1),
+    relates evidence @card(1..1);
+  relation coverage,
+    relates decision @card(1..1),
+    relates item @card(1..1);
+
+  # A library module, by hash: the rule the kernel was given.
+  entity artifact,
+    owns artifact-id @key,
+    owns artifact-kind @card(1..1),
+    owns lean-module @card(1..1),
+    owns lean-source @card(1..1),
+    owns source-sha256 @card(1..1),
+    owns recorded-at @card(1..1),
+    plays governance:artifact;
+
+  # The checked proof itself, kept so the decision can be re-verified.
+  entity proof,
+    owns proof-id @key,
+    owns theorem-name @card(1..1),
+    owns statement @card(1..1),
+    owns proof-term @card(1..1),
+    owns proof-source @card(1..1),
+    owns axioms-used @card(1..1),
+    owns kernel-version @card(1..1),
+    plays proved-by:proof;
+
+  # The core's central temporal invariant, in the schema rather than in a
+  # Python string. `standing(t)` is every fact recorded by `t` and not
+  # retracted by `t`, over every domain at once — it is defined on the
+  # abstract `fact`, so it needs to know no domain type.
+  fun standing($t: datetime) -> { fact }:
+  match
+    $f isa fact, has recorded-at $ra;
+    $ra <= $t;
+    not { $f has retracted-at $rx; $rx <= $t; };
+  return { $f };
+
+  relation proved-by, relates decision @card(1..1), relates proof @card(1..1);
+  relation governance,
+    relates decision @card(1..1),
+    relates artifact @card(1..1);
