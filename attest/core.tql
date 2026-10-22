@@ -56,6 +56,9 @@ define
   attribute decided-by, value string @values("witness", "negation", "evaluation");
   attribute as-of, value datetime;
   attribute decided-at, value datetime;
+  # A rule with `parameter` lines decides about its subject AND those inputs;
+  # their keys, as canonical JSON, so a stored decision says which pair it is.
+  attribute decision-inputs, value string;
 
   # ── the proof, and what it was checked against ──────────────────
   attribute artifact-id, value string;
@@ -137,6 +140,7 @@ define
     owns decided-by @card(1..1),
     owns as-of @card(1..1),
     owns decided-at @card(1..1),
+    owns decision-inputs @card(0..1),
     plays reliance:decision,
     plays coverage:decision,
     plays proved-by:decision,

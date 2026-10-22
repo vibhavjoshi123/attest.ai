@@ -71,6 +71,9 @@ class Snapshot:
     scope: tuple[tuple[str, str, str], ...] = field(default_factory=tuple)
     #: anything the export defaulted rather than read, named in the certificate
     assumptions: tuple[str, ...] = field(default_factory=tuple)
+    #: the decision's further inputs, (parameter name, key) in the rule's
+    #: declared order; empty for a rule with no `parameter` lines
+    params: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
 
 class Domain(Protocol):
@@ -94,7 +97,12 @@ class Domain(Protocol):
     def snapshot(self, store: Any, subject: str, as_of: str) -> Snapshot:
         """Read the facts. Trusted, so keep the queries simple and
         non-recursive — the recursion belongs in the compiled search, whose
-        answers are re-checked."""
+        answers are re-checked.
+
+        A domain whose rule declares `parameter` lines is called as
+        ``snapshot(store, subject, as_of, params={name: key, ...})`` and must
+        pass the same mapping to :func:`attest.make_snapshot`, which puts it
+        in the snapshot and its hash."""
         ...
 
     #: Patterns binding `$d` through a `coverage` edge, used by

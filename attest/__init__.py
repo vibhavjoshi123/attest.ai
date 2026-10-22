@@ -42,6 +42,8 @@ from .store import (
     as_of,
     dt,
     ident,
+    instant,
+    seal_window,
 )
 from .typebridge import OutOfSync
 
@@ -51,7 +53,7 @@ __all__ = [
     "LeanPackage", "OutOfSync", "RuleError", "Snapshot", "SnapshotIncomplete",
     "Recheck", "Store", "StoreConfig", "UnknownSubject", "VerificationError",
     "affected_decisions", "as_of", "decide", "decisions_relying_on",
-    "dt", "govern", "hash_json", "ident",
+    "dt", "govern", "hash_json", "ident", "instant", "seal_window",
     "lean_snapshot", "make_snapshot", "publish", "record", "rulec", "search",
     "decisions_after_rule_change", "recheck", "sha256", "sources_of", "sync", "tql_str", "typebridge", "verdicts",
 ]

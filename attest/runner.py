@@ -31,8 +31,8 @@ from typing import Any
 
 from . import rulec, typebridge
 from .domain import Domain, Snapshot
-from .kernel import Check, Kernel
-from .store import VerificationError, dt, ident
+from .kernel import Check, Kernel, case_source
+from .store import VerificationError, dt, ident, seal_window, _trim
 
 def verdicts(rule) -> tuple[str, str]:
     """What to call the two outcomes.
@@ -86,6 +86,14 @@ def lean_snapshot(snapshot: Snapshot, model, rule) -> str:
         fields.append(f"{collection['name']} := [\n    {items}]")
     if rulec.scoped(rule):
         fields.append(f"subject := {typebridge.lean_str(snapshot.subject)}")
+    given = dict(snapshot.params)
+    for p in rule.get("params", []):
+        if p["name"] not in given:
+            raise VerificationError(
+                f"rule {rule['id']} takes parameter {p['name']!r} and the "
+                f"snapshot does not carry it")
+        fields.append(f"{typebridge.camel(p['name'])} := "
+                      f"{typebridge.lean_str(given[p['name']])}")
     if rulec.uses_as_of(rule):
         fields.append(f"asOfDay := {as_of_day(snapshot.as_of)}")
     return "def snap : Snapshot :=\n  { " + ",\n    ".join(fields) + " }\n"
@@ -107,7 +115,7 @@ def as_of_day(as_of: str) -> int:
 
 
 def search(store, rule, subject: str, subject_type: str, subject_key: str,
-           as_of: str) -> list[list[str]]:
+           as_of: str, params=None, model=None) -> list[list[str]]:
     """Call the TypeQL function COMPILED from the rule.
 
     Returns witnesses as lists of fact-ids, one per `some` in the rule, in
@@ -118,9 +126,24 @@ def search(store, rule, subject: str, subject_type: str, subject_key: str,
         s for s in rule["steps"] if s["kind"] == "some")]
     # a rule that mentions `as-of-day` compiled to a function taking it, and
     # the value is the one the Lean snapshot carries, computed once
-    extra, arguments = "", "$s, $t"
+    extra, arguments = "", "$s, "
+    given = dict(params or {})
+    for i, p in enumerate(rule.get("params", [])):
+        key = typebridge.key_attr(model, p["type"]) if model else None
+        if key is None:
+            raise VerificationError(
+                f"parameter {p['name']!r}: {p['type']} needs exactly one "
+                f"@key for the search to bind it")
+        extra += (f' $a{i} isa {ident(p["type"])},'
+                  f' has {ident(key)} "{ident(given[p["name"]])}";')
+        arguments += f"$a{i}, "
+    arguments += "$t"
     if rulec.uses_as_of(rule):
-        extra = f" let $d = {as_of_day(as_of)};"
+        # `+=`, not `=`. Assigning here discarded every parameter binding
+        # built in the loop above, so the generated query called the
+        # function with `$a0` never bound: any rule with both parameters and
+        # a time window could not run at all.
+        extra += f" let $d = {as_of_day(as_of)};"
         arguments += ", $d"
     rows = store.rows(
         f'match $s isa {ident(subject_type)},'
@@ -141,7 +164,8 @@ def _row_key(row):
 
 
 def make_snapshot(subject: str, as_of: str, data: dict[str, Any],
-                  fact_ids=(), scope=(), assumptions=()) -> Snapshot:
+                  fact_ids=(), scope=(), assumptions=(),
+                  params=None) -> Snapshot:
     """Build a snapshot with its canonical hash.
 
     Domains call this rather than hashing themselves, so two domains cannot
@@ -187,9 +211,15 @@ def make_snapshot(subject: str, as_of: str, data: dict[str, Any],
                    else rows)
             for name, rows in data.items()}
     body = {"subject": subject, "as_of": as_of, "data": data}
+    pairs = tuple(sorted((str(k), str(v)) for k, v in (params or {}).items()))
+    if pairs:
+        # only when present, so every snapshot taken before parameters
+        # existed keeps the hash it was recorded with
+        body["params"] = dict(pairs)
     return Snapshot(subject=subject, as_of=as_of, data=data,
                     sha256=hash_json(body), fact_ids=tuple(fact_ids),
-                    scope=tuple(scope), assumptions=tuple(assumptions))
+                    scope=tuple(scope), assumptions=tuple(assumptions),
+                    params=pairs)
 
 
 @dataclass
@@ -240,7 +270,9 @@ class Certificate:
                          "sha256": self.snapshot.sha256,
                          "scope": list(self.snapshot.scope),
                          "assumptions": list(self.snapshot.assumptions),
-                         "data": self.snapshot.data},
+                         "data": self.snapshot.data,
+                         **({"params": dict(self.snapshot.params)}
+                            if self.snapshot.params else {})},
             "witnesses": self.witnesses,
             "witness_accepted": self.witness_accepted,
             # Both of these are STORED beside `certificate-hash` and both
@@ -304,7 +336,8 @@ def _unsettled(rule, snapshot, found, attempts, kernel, domain, store,
 
 def decide(store, domain: Domain, subject: str, as_of: str, *,
            kernel: Kernel | None = None,
-           suppress_search: bool = False) -> Certificate:
+           suppress_search: bool = False,
+           params: dict[str, str] | None = None) -> Certificate:
     """Decide one case. Returns the rule's two verdicts, or ERROR.
 
     Before anything else the rule is recompiled and both deployed forms are
@@ -323,6 +356,13 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
             f"as-of {dt(as_of)} is in the future (now {now}): a fact written "
             f"later would change this snapshot, so the decision could not be "
             f"replayed")
+    # Refusing a FUTURE as-of is not enough on its own. It leaves the whole
+    # gap between the last recorded fact and the decision's date open: with
+    # the ledger at the 1st and a decision as of the 10th, a writer whose
+    # clock read the 3rd was accepted, and its fact landed inside a snapshot
+    # that had already been certified. Closing the window first makes the
+    # as-of set frozen, which is what the certificate's hash claims.
+    seal_window(store, as_of)
     rule = rulec.load(domain.rule_path)
     model = rulec.check(store, rule, domain.lean.directory,
                         domain.lean.rules_namespace,
@@ -331,7 +371,18 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
         store, str(domain.lean.schema_path), sources_of(domain),
         domain.lean.schema_namespace)
 
-    snapshot = domain.snapshot(store, subject, as_of)
+    declared = [p["name"] for p in rule.get("params", [])]
+    given = dict(params or {})
+    if sorted(given) != sorted(declared):
+        raise VerificationError(
+            f"rule {rule['id']} takes parameters {declared}; got "
+            f"{sorted(given)}")
+    snapshot = (domain.snapshot(store, subject, as_of, params=given)
+                if declared else domain.snapshot(store, subject, as_of))
+    if dict(snapshot.params) != {k: str(v) for k, v in given.items()}:
+        raise VerificationError(
+            f"the export returned a snapshot for parameters "
+            f"{dict(snapshot.params)}, not the {given} asked about")
     namespace = f"Case_{snapshot.sha256[:12]}"
     defs = lean_snapshot(snapshot, model, rule)
     conclusion = rule["conclusion"]
@@ -358,7 +409,8 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
     # With the search suppressed there is nothing to agree or disagree WITH,
     # and saying "agree" asserted a concurrence that was never tested.
     found = [] if suppress_search else search(
-        store, rule, subject, domain.subject_type, domain.subject_key, as_of)
+        store, rule, subject, domain.subject_type, domain.subject_key, as_of,
+        params=given, model=model)
     attempts: list[Any] = []
     verdict = used = None
     witness_accepted = False
@@ -391,7 +443,9 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
             attempts.append(result)
             if result.accepted:
                 verdict = holds
-                used = rulec.relied_facts(rule, model, snapshot.data, witness)
+                used = rulec.relied_facts(
+                    rule, model, snapshot.data, witness,
+                    scopes={"subject": snapshot.subject, **given})
                 witness_accepted = True
                 decided_by = "witness"
 
@@ -491,7 +545,10 @@ def record(store, certificate: Certificate, subject_type: str,
         f' has rule-shape "{certificate.rule_shape}",'
         f' has decided-by {tql_str(certificate.decided_by)},'
         f' has as-of {dt(snapshot.as_of)},'
-        f' has decided-at {dt(decided_at)};'
+        f' has decided-at {dt(decided_at)}'
+        + (f', has decision-inputs '
+           f'{tql_str(json.dumps(dict(snapshot.params), sort_keys=True))}'
+           if snapshot.params else '') + ';'
     ]
     if certificate.proof:
         proof = certificate.proof
@@ -644,12 +701,17 @@ def publish(store, domain: Domain, recorded_at: str) -> dict[str, str]:
 
 
 def govern(store, decision_id: str, artifacts: dict[str, str]) -> None:
-    """Link a decision to the artifacts its proof was checked against."""
+    """Link a decision to the artifacts its proof was checked against.
+
+    `artifacts` maps artifact id to kind — the KEYS are the ids. It used to
+    be the other way round, which meant one artifact per kind survived and a
+    second theorem module was dropped on the floor.
+    """
     store.write([
         f'match $d isa decision, has decision-id "{ident(decision_id)}";'
         f' $a isa artifact, has artifact-id "{ident(artifact_id)}";'
         f' insert governance (decision: $d, artifact: $a);'
-        for artifact_id in sorted(set(artifacts.values()))
+        for artifact_id in sorted(artifacts)
     ], must_affect=True)
 
 
@@ -662,45 +724,99 @@ class Recheck:
     verdict: str
     passed: bool
     reason: str | None
+    #: artifact id -> kind. Keyed the other way round, by KIND, it kept one
+    #: artifact per kind: a domain with two theorem modules cited only one,
+    #: and its decisions could never be re-checked against the other.
     artifacts: dict[str, str]
     workspace: str | None = None
+    #: did the snapshot re-export to the hash the decision cites?
+    snapshot_matches: bool = False
+    #: did the case file regenerate byte for byte from that snapshot?
+    file_matches: bool = False
+    #: the toolchain recorded on the proof, and the one that just ran it
+    kernel_recorded: str | None = None
+    kernel_now: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {"decision_id": self.decision_id, "verdict": self.verdict,
                 "passed": self.passed, "reason": self.reason,
-                "artifacts": self.artifacts, "workspace": self.workspace}
+                "artifacts": self.artifacts, "workspace": self.workspace,
+                "snapshot_matches": self.snapshot_matches,
+                "file_matches": self.file_matches,
+                "kernel_recorded": self.kernel_recorded,
+                "kernel_now": self.kernel_now}
 
 
-def recheck(store, decision_id: str, *, lean_dir=None, root_module=None,
-            workdir: str | None = None) -> Recheck:
+def recheck(store, decision_id: str, *, domain, lean_dir=None,
+            root_module=None, workdir: str | None = None) -> Recheck:
     """Re-verify a stored decision using only what the store holds.
 
     Not the working tree. The point is to answer "was this decision sound?"
-    a year later, when the repository has moved on — so the Lean workspace is
-    rebuilt from the artifacts the decision cited, and the stored proof is
+    a year later, when the repository has moved on — so the Lean workspace
+    is rebuilt from the artifacts the decision cited, and the proof is
     re-checked against *those*.
 
-    Four things have to line up, and each is a separate way to fail:
-      the artifact sources still hash to their recorded sha256;
-      the workspace built from them compiles;
-      the kernel accepts the stored proof source in that workspace;
-      the axioms and statement it reports match what was stored.
+    This used to stop short of its own specification. It rebuilt the
+    artifacts and re-ran whatever file was stored, then made three text
+    checks: that the theorem line was present, that a leading `¬` agreed
+    with the stored verdict, and that `Case_<hash>` occurred *somewhere* in
+    the text — a bare substring, satisfied by a comment. Nothing tied the
+    file's `def snap` to the facts the decision claims to be about, and the
+    `Iff.rfl` line that stops a locally shadowed conclusion was not required
+    either. So anyone able to write to TypeDB could store a file about
+    different facts, or about an easier proposition, and have it re-verify.
+
+    Now the snapshot is re-exported as of the decision's own as-of (hence
+    `domain`), its hash is compared with the one the decision cites, and the
+    case file is regenerated from that snapshot and compared **byte for
+    byte** with the stored one. Once the file is known to be the file the
+    core would generate, the keyword denylist and the three text checks stop
+    being load-bearing: they are kept as defence in depth, not as the
+    argument.
+
+    Each of these is a separate way to fail:
+      the cited artifacts still hash to their recorded sha256;
+      the snapshot re-exports to the cited hash;
+      the case file regenerates byte for byte;
+      the workspace built from the artifacts compiles;
+      the kernel accepts the stored source in that workspace;
+      the axioms report is for this theorem, and within the allow-list;
+      the statement, the verdict's polarity and the snapshot namespace agree.
     """
     did = ident(decision_id)
+    lean_dir = lean_dir if lean_dir is not None else domain.lean.directory
+    root_module = root_module or domain.lean.root_module
+
     rows = store.rows(
         f'match $d isa decision, has decision-id "{did}", has verdict $v,'
-        f" has snapshot-hash $s, has rule-version $r;"
-        f" select $v, $s, $r;")
+        f" has snapshot-hash $s, has rule-version $r, has as-of $ao;"
+        f" select $v, $s, $r, $ao;")
     if not rows:
         raise VerificationError(f"no decision {decision_id!r}")
     decision = rows[0]
+
+    inputs = store.rows(
+        f'match $d isa decision, has decision-id "{did}",'
+        f" has decision-inputs $i; select $i;")
+    params = json.loads(inputs[0]["i"]) if inputs else {}
+
+    subjects = store.rows(
+        f'match $d isa decision, has decision-id "{did}";'
+        f" $d links (subject: $s);"
+        f' $s isa {ident(domain.subject_type)},'
+        f" has {ident(domain.subject_key)} $k; select $k;")
+    if not subjects:
+        return Recheck(did, decision["v"], False,
+                       "the decision names no subject of type "
+                       f"{domain.subject_type!r}", {})
+    subject = subjects[0]["k"]
 
     proofs = store.rows(
         f'match $d isa decision, has decision-id "{did}";'
         f" proved-by (decision: $d, proof: $p);"
         f" $p has theorem-name $n, has statement $st, has proof-term $t,"
-        f" has proof-source $src, has axioms-used $a;"
-        f" select $n, $st, $t, $src, $a;")
+        f" has proof-source $src, has axioms-used $a, has kernel-version $kv;"
+        f" select $n, $st, $t, $src, $a, $kv;")
     if not proofs:
         return Recheck(did, decision["v"], False,
                        "no proof is stored for this decision", {})
@@ -716,51 +832,135 @@ def recheck(store, decision_id: str, *, lean_dir=None, root_module=None,
         return Recheck(did, decision["v"], False,
                        "no artifacts are cited by this decision", {})
 
-    artifacts = {}
+    artifacts: dict[str, str] = {}
+    stored_rule_source = stored_rule_library = None
+    stored_schema_types = None
     for row in governing:
         if sha256(row["src"]) != row["h"]:
             return Recheck(did, decision["v"], False,
                            f"artifact {row['aid']} does not match its "
                            f"recorded hash", artifacts)
-        artifacts[row["k"]] = row["aid"]
+        artifacts[row["aid"]] = row["k"]
+        if row["k"] == "rule-source":
+            stored_rule_source = row["src"]
+        elif row["k"] == "rule-library":
+            stored_rule_library = row["src"]
+        elif row["k"] == "schema-types":
+            stored_schema_types = row["src"]
 
-    # No default for either of these. `root_module` used to fall back to a
-    # hard-coded module name, which is meaningless to any caller whose Lake
-    # package is named something else, and a missing `lean_dir` became the
-    # literal path "None/lakefile.lean". Both produced a confusing late
-    # error instead of saying which argument was absent.
-    if lean_dir is None or root_module is None:
-        missing = ", ".join(n for n, v in (("lean_dir", lean_dir),
-                                           ("root_module", root_module))
-                            if v is None)
+    # ── §7.8 step 2: re-export, and confirm the hash ────────────────
+    if stored_rule_source is None:
         return Recheck(did, decision["v"], False,
-                       f"cannot rebuild the workspace: {missing} not given",
-                       artifacts)
+                       "no rule source is cited, so the case file cannot be "
+                       "regenerated", artifacts)
+    try:
+        rule = rulec.parse(stored_rule_source)
+    except Exception as exc:                                  # noqa: BLE001
+        return Recheck(did, decision["v"], False,
+                       f"the stored rule source does not parse: "
+                       f"{str(exc)[:200]}", artifacts)
+    # The as-of has to be the STRING the decision hashed, not merely the
+    # same instant. TypeDB returns a datetime at nanosecond precision, so
+    # the stored `2026-10-10T00:00:00` reads back as
+    # `2026-10-10T00:00:00.000000000`; `as_of` is part of the snapshot hash,
+    # so re-exporting with the padded form hashed differently and every
+    # clean recheck reported the facts as changed when nothing had.
+    as_of_stored = _trim(decision["ao"])
+    try:
+        snapshot = (domain.snapshot(store, subject, as_of_stored,
+                                    params=params)
+                    if rule.get("params") else
+                    domain.snapshot(store, subject, as_of_stored))
+    except Exception as exc:                                  # noqa: BLE001
+        return Recheck(did, decision["v"], False,
+                       f"the snapshot does not re-export: "
+                       f"{type(exc).__name__}: {str(exc)[:200]}", artifacts)
+    if snapshot.sha256 != decision["s"]:
+        return Recheck(did, decision["v"], False,
+                       f"the snapshot no longer re-exports to the hash this "
+                       f"decision cites: {decision['s'][:12]} recorded, "
+                       f"{snapshot.sha256[:12]} now", artifacts)
+
+    # ── §7.8 step 3: regenerate the case file, byte for byte ────────
+    # The model has to be the one this decision was taken against, or a
+    # byte difference in the regenerated file gets blamed on tampering when
+    # the real cause is a schema that moved. Rendered from the live schema
+    # and then held to the stored artifact, so a drifted schema is reported
+    # as itself.
+    expected_types, model, _live = typebridge.render(
+        store, domain.lean.schema_namespace)
+    if stored_schema_types is not None and stored_schema_types != expected_types:
+        return Recheck(did, decision["v"], False,
+                       "the live TypeDB schema no longer renders to the Lean "
+                       "types this decision cites, so its case file cannot "
+                       "be regenerated faithfully", artifacts,
+                       snapshot_matches=True)
+    # The stored Lean rule is what the stored RULE TEXT compiles to. Nothing
+    # checked this: the two were published as separate artifacts and each
+    # was only held to its own hash, so a rule module that did not come from
+    # its own `.rule` file re-verified.
+    if stored_rule_library is not None:
+        recompiled = rulec.compile_lean(rule, model,
+                                        domain.lean.rules_namespace,
+                                        domain.lean.schema_namespace)
+        if recompiled != stored_rule_library:
+            return Recheck(did, decision["v"], False,
+                           "the stored Lean rule module is not what the "
+                           "stored rule source compiles to", artifacts,
+                           snapshot_matches=True)
+    namespace = f"Case_{snapshot.sha256[:12]}"
+    rule_module = rulec.module(rule, domain.lean.rules_namespace)
+    conclusion = rule["conclusion"]
+    binding = (f"example : ({conclusion} snap) ↔ "
+               f"({rule_module}.{conclusion} snap) := Iff.rfl\n")
+    try:
+        defs = lean_snapshot(snapshot, model, rule)
+    except Exception as exc:                                  # noqa: BLE001
+        return Recheck(did, decision["v"], False,
+                       f"the snapshot does not render as Lean: "
+                       f"{type(exc).__name__}: {str(exc)[:200]}", artifacts)
+    regenerated = case_source(
+        namespace, (rule_module, *domain.lean.theorem_modules),
+        (domain.lean.schema_namespace, rule_module), defs + binding,
+        proof["n"], proof["st"], proof["t"])
+    if regenerated != proof["src"]:
+        return Recheck(did, decision["v"], False,
+                       "the stored case file is not what this snapshot and "
+                       "this rule generate: it has been altered, or the "
+                       "generator has changed", artifacts,
+                       snapshot_matches=True)
+
+    # ── §7.8 step 4: rebuild from the store, and re-run the kernel ──
     try:
         workspace = typebridge.materialize(
-            store, sorted(artifacts.values()),
-            str(lean_dir), root_module, workdir)
+            store, sorted(artifacts), str(lean_dir), root_module, workdir)
     except Exception as exc:                                  # noqa: BLE001
         return Recheck(did, decision["v"], False,
                        f"artifacts do not rebuild: {str(exc)[-400:]}",
-                       artifacts)
+                       artifacts, snapshot_matches=True, file_matches=True)
 
     kernel = Kernel(pathlib.Path(workspace))
-    kernel._built = True            # materialize already built the workspace
+    # materialize already ran `lake build` here
+    kernel._built_at = kernel._fingerprint()
+    now = kernel.version()
+    out = dict(artifacts=artifacts, workspace=workspace,
+               snapshot_matches=True, file_matches=True,
+               kernel_recorded=proof["kv"], kernel_now=now)
     path = pathlib.Path(workspace) / "Cases" / f"recheck_{did}.lean"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(proof["src"])
-    completed = kernel.check_source(proof["src"], path, proof["n"])
+    completed = kernel.check_source(proof["src"], path, proof["n"],
+                                    qualified=f"{namespace}.{proof['n']}")
 
     if not completed.accepted:
         return Recheck(did, decision["v"], False,
                        f"the stored proof no longer checks: "
-                       f"{completed.reason}", artifacts, workspace)
+                       f"{completed.reason}", **out)
     stored_axioms = {a for a in proof["a"].split(",") if a}
     if set(completed.axioms) != stored_axioms:
         return Recheck(did, decision["v"], False,
                        f"axioms changed: stored {sorted(stored_axioms)}, "
-                       f"now {list(completed.axioms)}", artifacts, workspace)
+                       f"now {list(completed.axioms)}", **out)
     # The stored statement must be the theorem the source actually states,
     # as a whole line. A substring test passed for any statement that
     # happened to occur anywhere in the text — and `C snap` occurs inside
@@ -769,33 +969,35 @@ def recheck(store, decision_id: str, *, lean_dir=None, root_module=None,
     if f"theorem {proof['n']} : {proof['st']} :=" not in proof["src"]:
         return Recheck(did, decision["v"], False,
                        f"the stored source does not state "
-                       f"{proof['st']!r} as {proof['n']!r}",
-                       artifacts, workspace)
+                       f"{proof['st']!r} as {proof['n']!r}", **out)
 
     # Bind the proof to the VERDICT. Nothing did: the verdict was read from
     # the store and never compared with what was proved, so a decision whose
     # stored verdict had been flipped from `not C` to `C` re-verified
     # happily — the proof still checked, it just proved the opposite.
-    proves_negation = proof["st"].lstrip().startswith("¬")
-    says_negation = decision["v"].startswith("not ")
-    if proves_negation != says_negation:
+    # Checked against the rule's own two verdicts rather than the prefix
+    # "not ", so a stored verdict that is neither of them is refused too
+    # instead of counting as "not negated" and agreeing with a positive
+    # proof.
+    holds, fails = verdicts(rule)
+    if decision["v"] not in (holds, fails):
         return Recheck(did, decision["v"], False,
-                       f"the stored proof proves "
-                       f"{'the negation' if proves_negation else 'the rule'}"
-                       f", but the stored verdict is {decision['v']!r}",
-                       artifacts, workspace)
+                       f"the stored verdict {decision['v']!r} is neither "
+                       f"{holds!r} nor {fails!r}", **out)
+    negated = proof["st"].lstrip().startswith("¬")
+    if negated != (decision["v"] == fails):
+        return Recheck(did, decision["v"], False,
+                       f"the stored proof proves {proof['st']!r}, but the "
+                       f"stored verdict is {decision['v']!r}", **out)
 
-    # Bind the proof to the SNAPSHOT this decision cites. The case file's
-    # namespace carries the snapshot hash, and `snapshot-hash` was being
-    # selected from the store and then discarded — so nothing checked that
-    # the proof was about the facts the decision claims to be about.
-    namespace = f"Case_{decision['s'][:12]}"
+    # Bind the proof to the SNAPSHOT this decision cites. Redundant now that
+    # the whole file is compared, and kept as the cheap direct statement of
+    # the property.
     if namespace not in proof["src"]:
         return Recheck(did, decision["v"], False,
                        f"the stored proof is not about the snapshot this "
-                       f"decision cites ({namespace} absent)",
-                       artifacts, workspace)
-    return Recheck(did, decision["v"], True, None, artifacts, workspace)
+                       f"decision cites ({namespace} absent)", **out)
+    return Recheck(did, decision["v"], True, None, **out)
 
 
 # ── impact analysis ─────────────────────────────────────────────────

@@ -563,7 +563,11 @@ def publish(store, sources, recorded_at):
                 f'has lean-source {tql_str(src)}, '
                 f'has source-sha256 {tql_str(h)}, '
                 f'has recorded-at {recorded_at};')
-        ids[kind] = aid
+        # Keyed by artifact id, not by kind. Keying by kind silently kept
+        # ONE artifact per kind, so a domain with two theorem modules
+        # published both and cited only the last: its decisions could never
+        # be re-checked against the other one.
+        ids[aid] = kind
     return ids
 
 
@@ -598,7 +602,11 @@ def check_sync(store, schema_lean, sources, namespace, db=None):
         if not store.rows(f'match $a isa artifact, has artifact-id {tql_str(aid)}, '
                           f'has source-sha256 {tql_str(h)}; select $a;'):
             raise OutOfSync(f"{module} ({h[:12]}) is not published in TypeDB")
-        ids[kind] = aid
+        # Keyed by artifact id, not by kind. Keying by kind silently kept
+        # ONE artifact per kind, so a domain with two theorem modules
+        # published both and cited only the last: its decisions could never
+        # be re-checked against the other one.
+        ids[aid] = kind
     return ids
 
 
@@ -619,6 +627,20 @@ def materialize(store, artifact_ids, lean_dir, root_module, workdir=None):
     os.makedirs(workdir, exist_ok=True)
     root = os.path.realpath(workdir)
     shutil.copy(os.path.join(lean_dir, "lakefile.lean"), workdir)
+    # The toolchain pin, too. Only the lakefile was copied, so the rebuilt
+    # workspace ran on whatever elan defaults to globally rather than the
+    # version the decision was checked with — which can be a Lean older
+    # than 4.32.2, where the kernel admits `False` with no axioms at all
+    # (CVE-2026-72844). A recheck on that toolchain accepts anything while
+    # reporting a clean axiom list. Measured on this machine: the default is
+    # 4.15.0 and the packages pin 4.35.0.
+    pin = os.path.join(lean_dir, "lean-toolchain")
+    if os.path.exists(pin):
+        shutil.copy(pin, workdir)
+    else:
+        raise OutOfSync(
+            f"{lean_dir} has no lean-toolchain, so a rebuilt workspace "
+            f"would be checked by an unpinned Lean")
     mods = []
     for aid in artifact_ids:
         r = store.rows(f'match $a isa artifact, has artifact-id {tql_str(aid)}, '

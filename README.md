@@ -148,8 +148,7 @@ with Store(os.environ.get("TYPEDB_DATABASE", "acme")) as store:
     govern(store, did, artifacts)                # cite what it was checked against
 
     # later, from storage alone
-    rc = recheck(store, did, lean_dir=dom.lean.directory,
-                 root_module=dom.lean.root_module)
+    rc = recheck(store, did, domain=dom)
     print(rc.passed, rc.reason)
 ```
 
@@ -161,8 +160,10 @@ What each call does:
 - **`publish`** stores the rule source, the compiled Lean library, the
   generated types and any hand-written theorem modules in TypeDB, each by
   hash.
-- **`decide`** takes the snapshot, asks TypeDB to search, and has Lean check
-  the result. `Certificate.decided_by` says how the verdict was reached:
+- **`decide`** closes the as-of window first — advancing the ledger to the
+  decision's date if it is behind, so no later write can be stamped inside a
+  snapshot that has already been certified — then takes the snapshot, asks
+  TypeDB to search, and has Lean check the result. `Certificate.decided_by` says how the verdict was reached:
   `witness` (TypeDB proposed facts and the kernel verified them),
   `negation` (the kernel decided the rule does **not** hold, over the whole
   snapshot), or `evaluation` (the kernel decided it without the search).
@@ -173,9 +174,16 @@ What each call does:
   A decision the search and the kernel disagree about is refused unless
   `allow_disagreement=True`.
 - **`govern`** links the decision to the artifacts it was checked against.
-- **`recheck`** re-makes the snapshot as of the decision's own date, confirms
-  the hash, rebuilds the Lean library from the artifacts stored in TypeDB into
-  a fresh workspace, and re-runs the stored proof there. All three must pass.
+- **`recheck`** re-makes the snapshot as of the decision's own date and
+  confirms the hash; re-parses the rule from the **stored** rule source and
+  regenerates the case file, which must match the stored one **byte for
+  byte**; then rebuilds the Lean library from the artifacts stored in TypeDB
+  into a fresh workspace — including its `lean-toolchain`, so the replay runs
+  on the pinned Lean — and re-runs the stored proof there. It needs the
+  `domain`, because it cannot re-export without one. `rc.snapshot_matches`
+  and `rc.file_matches` report the first two separately, and
+  `rc.kernel_recorded` / `rc.kernel_now` name the toolchain the proof was
+  checked with and the one that just replayed it.
 
 ### When facts change
 

@@ -19,7 +19,8 @@ Rule language (line-based):
     rule <id> <version>
     says "<plain-language statement>"
     subject <entity type>
-    collection <name> : <relation type> [for subject via <role>]
+    parameter <name> : <entity type>          (zero or more further inputs)
+    collection <name> : <relation type> [for (subject | <parameter>) via <role>]
     closure <name> over <collection> from <role> to <role>
     conclude <Name> when
       some <relation type> <var> in <collection>
@@ -43,14 +44,35 @@ sha = tb.sha
 
 
 # --------------------------------------------------------------------- parse
+def _strip_comment(line: str) -> str:
+    """Remove a `#` comment, but not a `#` inside a quoted literal.
+
+    Splitting on the first `#` cut literals in half. `require m.source =
+    "ICD#10"` compiled to a comparison against `"ICD` — truncated AND with
+    an unbalanced quote — in BOTH the Lean definition and the TypeQL search.
+    Because both sides were cut identically they agreed, so the per-case
+    comparison of search against kernel could never see it: the rule simply
+    asked a different question than the one written down.
+    """
+    out, quoted = [], False
+    for ch in line:
+        if ch == '"':
+            quoted = not quoted
+        elif ch == "#" and not quoted:
+            break
+        out.append(ch)
+    return "".join(out)
+
+
 def parse(text):
-    r = {"collections": [], "closures": [], "steps": [], "source": text, "sha": sha(text)}
+    r = {"collections": [], "closures": [], "params": [], "steps": [],
+         "source": text, "sha": sha(text)}
     in_body = False
     # Nested blocks are tracked by indentation. `stack[-1]` is the step list
     # the next, more-indented line belongs to; -1 is the outermost body.
     stack = [(-1, r["steps"])]
     for n, raw in enumerate(text.splitlines(), 1):
-        line = raw.split("#", 1)[0].rstrip()
+        line = _strip_comment(raw).rstrip()
         if not line.strip():
             continue
         w = line.split()
@@ -74,8 +96,23 @@ def parse(text):
                         r"(\S+(?:\s*[-+]\s*\d+)?)$", line.strip())
                     assert m, ("expected: require <lhs> "
                                "(=|!=|>=|<=|>|<|is-a|<closure>) <rhs>")
+                    rhs = m.group(3)
+                    # A quoted literal must be ONE balanced literal. The
+                    # body is tokenised on whitespace, so `"a b"` and `"a.b"`
+                    # already failed — but with errors about something else
+                    # entirely ("a is used before it is bound"). Worse,
+                    # `"a"b"` parsed clean and was emitted verbatim into both
+                    # the Lean definition and the TypeQL function, where the
+                    # stray quote ends the literal early. Refuse here, where
+                    # the rule author can see which line is at fault.
+                    if '"' in rhs and not re.fullmatch(r'"[^"]*"', rhs):
+                        raise AssertionError(
+                            f"{rhs!r} is not a single balanced literal. A "
+                            f"quoted literal may not contain a quote, and "
+                            f"the rule body is read one token per word, so "
+                            f"it may not contain a space or a dot either")
                     here.append({"kind": "require", "lhs": m.group(1),
-                                 "op": m.group(2), "rhs": m.group(3)})
+                                 "op": m.group(2), "rhs": rhs})
                 elif w[0] == "none":                     # none of  <indented block>
                     assert w[1:] == ["of"], "expected: none of"
                     block = {"kind": "none", "steps": []}
@@ -92,13 +129,18 @@ def parse(text):
                 r["says"] = json.loads(line.strip()[len("says"):].strip())
             elif w[0] == "subject":
                 r["subject"] = w[1]
-            elif w[0] == "collection":            # collection <name> : <type> [for subject via <role>]
-                c = {"name": w[1], "type": w[3], "via": None}
+            elif w[0] == "collection":            # collection <name> : <type> [for <scope> via <role>]
+                c = {"name": w[1], "type": w[3], "via": None, "scope": None}
                 assert w[2] == ":"
                 if len(w) > 4:
-                    assert w[4:7] == ["for", "subject", "via"]
-                    c["via"] = w[7]
+                    assert w[4] == "for" and w[6] == "via" and len(w) == 8, \
+                        "expected: for (subject | <parameter>) via <role>"
+                    c["scope"], c["via"] = w[5], w[7]
                 r["collections"].append(c)
+            elif w[0] == "parameter":             # parameter <name> : <entity type>
+                assert len(w) == 4 and w[2] == ":", \
+                    "expected: parameter <name> : <entity type>"
+                r["params"].append({"name": w[1], "type": w[3]})
             elif w[0] == "closure":               # closure <name> over <coll> from <role> to <role>
                 assert w[2] == "over" and w[4] == "from" and w[6] == "to"
                 r["closures"].append({"name": w[1], "coll": w[3], "from": w[5], "to": w[7]})
@@ -114,6 +156,10 @@ def parse(text):
 
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_']*$")
+
+#: a TypeDB label or a rule-local name: identifiers may carry hyphens
+#: (`member-of`, `effective-day`), which Lean identifiers may not
+_TYPE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
 
 def _safe_prose(text):
@@ -146,8 +192,101 @@ def all_steps(steps):
             yield from all_steps(s["steps"])
 
 
+_PARAM_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+
+
+def _check_params(r):
+    """Parameters: further inputs of a decision, beyond its subject.
+
+    A rule about one *pair* — this order for this sample, this route of this
+    pathway — used to have to invent an entity whose key spelled the pair
+    ("s000001:chest-xray"), because a rule's only input was its subject. A
+    parameter is that second input, named and typed, and a collection can be
+    scoped to it exactly as to the subject. Both compiled forms take it: the
+    Lean snapshot carries its key and every binder scoped to it checks it;
+    the TypeQL search takes it as an argument.
+    """
+    names = [p["name"] for p in r["params"]]
+    if len(set(names)) != len(names):
+        raise RuleError("a parameter is declared twice")
+    lean_names = {c["name"] for c in r["collections"]} | {"subject", "asOfDay"}
+    for p in r["params"]:
+        if not _PARAM_RE.match(p["name"]) or p["name"] == "subject":
+            raise RuleError(
+                f"parameter {p['name']!r}: use lower-case letters, digits "
+                f"and single hyphens, and not `subject`")
+        if tb.camel(p["name"]) in lean_names or p["name"] in lean_names:
+            raise RuleError(
+                f"parameter {p['name']!r} collides with a collection or a "
+                f"field the compiled snapshot already has")
+    for c in r["collections"]:
+        if c["scope"] not in (None, "subject", *names):
+            raise RuleError(
+                f"collection {c['name']}: `for {c['scope']}` names neither "
+                f"the subject nor a declared parameter")
+
+
+#: `rule <id> <version>` — a dotted path of identifiers, and a version
+_RULE_ID_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*(\.[A-Za-z_][A-Za-z0-9_-]*)*$")
+_VERSION_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _check_names(r):
+    """Every identifier field, before any of them reaches a generated file.
+
+    `says` was guarded by `_safe_prose` because it is interpolated into a
+    Lean comment. The other fields are interpolated into the same file and
+    were not guarded at all: `rule demo.x v0.1"++"-/initialize` put a
+    comment delimiter into the header and the `ruleId` string literal,
+    closing the comment early and reaching `initialize` — build-time code
+    execution, from a field nobody thinks of as code. Collection, binder,
+    closure, parameter and subject names reach the generated structures the
+    same way. The drift check is no defence: the generated file genuinely is
+    what the rule compiles to.
+    """
+    if not _RULE_ID_RE.match(r["id"]):
+        raise RuleError(
+            f"rule id {r['id']!r} must be dot-separated identifiers")
+    if not _VERSION_RE.match(r["version"]):
+        raise RuleError(
+            f"rule version {r['version']!r} must be letters, digits, "
+            f"'.', '-' or '_'")
+    if not _IDENT_RE.match(r["subject"]) and not _TYPE_RE.match(r["subject"]):
+        raise RuleError(f"subject {r['subject']!r} is not a type name")
+    for c in r["collections"]:
+        for field in ("name", "type", "via", "scope"):
+            value = c.get(field)
+            if value is None:
+                continue
+            if not _TYPE_RE.match(value):
+                raise RuleError(
+                    f"collection {c['name']!r}: {field} {value!r} is not a "
+                    f"name")
+    for c in r["closures"]:
+        for field in ("name", "coll", "from", "to"):
+            if not _TYPE_RE.match(c[field]):
+                raise RuleError(
+                    f"closure {c['name']!r}: {field} {c[field]!r} is not a "
+                    f"name")
+    for prm in r["params"]:
+        for field in ("name", "type"):
+            if not _TYPE_RE.match(prm[field]):
+                raise RuleError(
+                    f"parameter {prm['name']!r}: {field} {prm[field]!r} is "
+                    f"not a name")
+    for s in all_steps(r["steps"]):
+        if s["kind"] == "some":
+            for field in ("type", "var", "coll"):
+                if not _TYPE_RE.match(s[field]):
+                    raise RuleError(
+                        f"`some {s['type']} {s['var']} in {s['coll']}`: "
+                        f"{field} {s[field]!r} is not a name")
+
+
 def _check(r):
     _safe_prose(r["says"])
+    _check_names(r)
+    _check_params(r)
     # An empty body compiles to `Prop := True` (see `build` in compile_lean):
     # vacuously provable, and on an `Eligible`-style conclusion that approves
     # everyone with a real kernel proof.
@@ -216,7 +355,7 @@ def _check(r):
                 # refused as DISAGREE and every negative one recorded as
                 # "agree".
                 if (s["var"] in RESERVED_BINDERS
-                        or re.fullmatch(r"[cdk]\d+", s["var"])
+                        or re.fullmatch(r"(?:[cdk]|arg)\d+", s["var"])
                         or re.search(r"_(ra|rx|fid)$", s["var"])
                         or "_" in s["var"]):
                     # Both compilers introduce names of their own: `s` is the
@@ -467,7 +606,30 @@ def _reject_role_vs_literal(r, model):
 
 def scoped(r):
     """Whether any collection is scoped to the decision's subject."""
-    return any(c["via"] for c in r["collections"])
+    return any(c["via"] and c["scope"] in (None, "subject")
+               for c in r["collections"])
+
+
+def scope_field(collection):
+    """The snapshot field a scoped collection's rows must match: the
+    subject, or the parameter the collection is scoped to."""
+    sc = collection.get("scope") or "subject"
+    return "subject" if sc == "subject" else tb.camel(sc)
+
+
+def scope_var(r, collection):
+    """The TypeQL variable for a scoped collection's scope."""
+    sc = collection.get("scope") or "subject"
+    if sc == "subject":
+        return "$subject"
+    return f"$arg{[p['name'] for p in r['params']].index(sc)}"
+
+
+def scope_type(r, collection):
+    sc = collection.get("scope") or "subject"
+    if sc == "subject":
+        return r["subject"]
+    return next(p["type"] for p in r["params"] if p["name"] == sc)
 
 
 def binder_guards(step, colls):
@@ -481,7 +643,8 @@ def binder_guards(step, colls):
     collection = colls[step["coll"]]
     out = []
     if collection.get("via"):
-        out.append(f"{step['var']}.{tb.camel(collection['via'])} = s.subject")
+        out.append(f"{step['var']}.{tb.camel(collection['via'])} = "
+                   f"s.{scope_field(collection)}")
     out.append(f"{step['var']}.retractedAt = none")
     return out
 
@@ -514,6 +677,9 @@ def compile_lean(r, model, rules_namespace, schema_namespace):
         # subject proved the rule, with no axioms.
         L.append("  /-- whose case this is; every scoped binder checks it -/")
         L.append("  subject : String")
+    for p in r["params"]:
+        L.append(f"  /-- input `{p['name']}`: the key of the {p['type']} decided about -/")
+        L.append(f"  {tb.camel(p['name'])} : String")
     if uses_as_of(r):
         # only when the rule asks for it, so a rule that says nothing about
         # time keeps the Snapshot it had and its artifacts do not churn
@@ -524,9 +690,30 @@ def compile_lean(r, model, rules_namespace, schema_namespace):
     # while a rule could name a second is how two hierarchies in one rule
     # failed to build at all.
     for clo in r["closures"]:
-        ty = tb.pascal(colls[clo["coll"]]["type"])
+        cc = colls[clo["coll"]]
+        ty = tb.pascal(cc["type"])
         fr, to = tb.camel(clo["from"]), tb.camel(clo["to"])
         fn = tb.camel(clo["name"])
+        if cc["via"]:
+            # A closure over a SCOPED collection walks only the scope's own
+            # edges. The fold used to walk the whole list and rely on the
+            # export to have scoped it, while the compiled search walked
+            # every edge in the database: two samples sharing a pathway's
+            # nodes then reached through each other's edges in the search,
+            # the kernel rejected the witness, and the verdict was recorded
+            # as a disagreement. Now both forms carry the scope.
+            vf = tb.camel(cc["via"])
+            L += [f"/-- closure `{clo['name']}` over `{clo['coll']}` (scoped to "
+                  f"`{cc['scope'] or 'subject'}`), {clo['from']} → {clo['to']}: one round.",
+                  "    Only unretracted edges belonging to the scope are walked. -/",
+                  f"def {fn}Step (sc : String) (edges : List {ty}) (xs : List String) : List String :=",
+                  f"  (xs ++ (edges.filter (fun e => e.retractedAt.isNone && "
+                  f"e.{vf} == sc && xs.contains e.{fr})).map (·.{to})).eraseDups", "",
+                  f"/-- `x` itself and everything it reaches within the scope. -/",
+                  f"def {fn} (s : Snapshot) (x : String) : List String :=",
+                  f"  (List.range (s.{clo['coll']}.length + 1)).foldl "
+                  f"(fun xs _ => {fn}Step s.{scope_field(cc)} s.{clo['coll']} xs) [x]", ""]
+            continue
         L += [f"/-- closure `{clo['name']}` over `{clo['coll']}`, {clo['from']} → {clo['to']}: "
               "one round.",
               "",
@@ -656,6 +843,19 @@ def compile_typeql(r, model):
                             f"{ety}:{clo['from']}, got {players}")
         pt = players[0]
         f = cnames[clo["name"]]
+        cc = colls[clo["coll"]]
+        if cc["via"]:
+            # scoped: the walk is restricted to the scope's own edges, the
+            # same restriction the Lean fold applies
+            st = scope_type(r, cc)
+            out += [f"fun {f}($x: {pt}, $sc: {st}, $t: datetime) -> {{ {pt} }}:",
+                    "match",
+                    f"  {{ $y isa {pt}; $y is $x; }} or",
+                    f"  {{ let $m in {f}($x, $sc, $t);",
+                    f"    $e isa {ety}, links ({clo['from']}: $m, {clo['to']}: $y, "
+                    f"{cc['via']}: $sc); {active('$e')} }};",
+                    "return { $y };", ""]
+            continue
         out += [f"fun {f}($x: {pt}, $t: datetime) -> {{ {pt} }}:",
                 "match",
                 f"  {{ $y isa {pt}; $y is $x; }} or",
@@ -664,6 +864,7 @@ def compile_typeql(r, model):
                 "return { $y };", ""]
 
     subj = r["subject"]
+    closures_by_name = {c["name"]: c for c in r["closures"]}
     body, bound_fields, rets = [], {}, []
     #: which statement list a variable's scope writes into. A field of an
     #: OUTER variable read inside `not { … }` has to be bound outside it, or
@@ -693,7 +894,8 @@ def compile_typeql(r, model):
                 continue
             if s["kind"] == "some":
                 c = colls[s["coll"]]
-                via = f", links ({c['via']}: $subject)" if c["via"] else ""
+                via = (f", links ({c['via']}: {scope_var(r, c)})"
+                       if c["via"] else "")
                 sink.append(f"  ${s['var']} isa {s['type']}{via}; "
                             f"{active('$' + s['var'])}")
                 var_sink[s["var"]] = sink
@@ -706,7 +908,9 @@ def compile_typeql(r, model):
                 k[0] += 1
                 xa = fvar(a[1], a[2], a[4])
                 closure = cnames[s["closure"]]
-                sink.append(f"  let $c{k[0]} in {closure}({xa}, $t);")
+                cc = colls[closures_by_name[s["closure"]]["coll"]]
+                scope_arg = f"{scope_var(r, cc)}, " if cc["via"] else ""
+                sink.append(f"  let $c{k[0]} in {closure}({xa}, {scope_arg}$t);")
                 if b[0] == "lit":
                     # the group is named, so compare the reached entity's key
                     # — the same value Lean compares
@@ -750,7 +954,19 @@ def compile_typeql(r, model):
                     sink.append(f"  {xa} {TQL_OP[s['op']]} {xb};")
 
     emit(r["steps"], body, True)
-    params = f"$subject: {subj}, $t: datetime"
+    # Every argument must be used, or TypeDB refuses the function
+    # (`[FRP1] Function argument variable … is unused`). A rule whose
+    # collections are all global — a check over reference data, say — never
+    # mentioned `$subject` and so could not be deployed at all. Typing an
+    # otherwise unused argument is a use, and constrains nothing the
+    # caller did not already bind.
+    if not any(c["via"] and (c["scope"] in (None, "subject"))
+               for c in r["collections"]):
+        body.insert(0, f"  $subject isa {subj};")
+    for i, p in enumerate(r["params"]):
+        body.insert(0, f"  $arg{i} isa {p['type']};")
+    params = f"$subject: {subj}, " + "".join(
+        f"$arg{i}: {p['type']}, " for i, p in enumerate(r["params"])) + "$t: datetime"
     if uses_as_of(r):
         params += ", $asof_day: integer"
     out += [f"fun {wname}({params}) -> "
@@ -788,8 +1004,52 @@ def witness_proof(r, model, snap_rows, fact_ids):
     return "⟨" + ",\n   ".join(parts) + "⟩"
 
 
-def relied_facts(r, model, snap_rows, fact_ids):
-    """The witness's records plus, for each is-a, the closure edges on its path."""
+def double_negated_collections(r):
+    """Collections a holding verdict depends on POSITIVELY from inside a
+    negation: those bound (or walked) under an even number of `none of`,
+    two or more deep.
+
+    Polarity follows depth. Under one `none of` a fact can only make the
+    block false, so retracting it can only make a holding verdict MORE
+    true — nothing to flag. Under two it is the other way round: the
+    "every condition is met" shape
+
+        none of                      # no condition is missing ...
+          some criterion c …
+          none of                    # ... its resolution
+            some resolution v …      # <- v supports the verdict
+
+    holds because each `v` exists. Retract one and the inner block becomes
+    true, the outer one false, and the verdict flips. The witness cites no
+    `v` (there is none to cite: the proof of an absence names nothing), so
+    impact analysis reported that retracting it affected no decision.
+    """
+    colls = {c["name"]: c for c in r["collections"]}
+    closures = {c["name"]: c for c in r["closures"]}
+    found = set()
+
+    def walk(steps, depth):
+        for s in steps:
+            if s["kind"] == "none":
+                walk(s["steps"], depth + 1)
+            elif depth >= 2 and depth % 2 == 0:
+                if s["kind"] == "some":
+                    found.add(s["coll"])
+                elif s["op"] not in COMPARISONS:
+                    found.add(closures[s["closure"]]["coll"])
+    walk(r["steps"], 0)
+    return sorted(c for c in found if c in colls)
+
+
+def relied_facts(r, model, snap_rows, fact_ids, scopes=None):
+    """The witness's records; for each top-level walking step, the closure
+    edges on its path; and every fact of a collection the verdict reads
+    positively under a double negation (see `double_negated_collections`).
+
+    `scopes` maps `subject` and each parameter to its key, so a path through
+    a scoped closure is traced over the scope's own edges only, as both
+    compiled forms walk it."""
+    scopes = scopes or {}
     rows, it = {}, iter(fact_ids)
     for s in r["steps"]:
         if s["kind"] == "some":
@@ -797,6 +1057,7 @@ def relied_facts(r, model, snap_rows, fact_ids):
             rows[s["var"]] = next(x for x in snap_rows[s["coll"]] if x["fact-id"] == fid)
     facts = {row["fact-id"] for row in rows.values()}
     closures = {c["name"]: c for c in r["closures"]}
+    colls = {c["name"]: c for c in r["collections"]}
     # top-level steps only: a walking step inside `none of` holds because no
     # path exists, so there are no edges to cite. What such a block does
     # depend on is everything that was *looked at* — which is the snapshot's
@@ -809,7 +1070,12 @@ def relied_facts(r, model, snap_rows, fact_ids):
     for s in r["steps"]:
         if s["kind"] == "require" and s["op"] not in COMPARISONS:
                 clo = closures[s["closure"]]
-                edges = snap_rows[clo["coll"]]
+                cc = colls[clo["coll"]]
+                edges = [e for e in snap_rows[clo["coll"]]
+                         if e.get("retracted-at") is None
+                         and (not cc["via"]
+                              or e.get(cc["via"]) == scopes.get(
+                                  cc["scope"] or "subject"))]
                 va, fa = s["lhs"].split(".", 1)
                 start = rows[va][fa]
                 # the right side is either another bound field or a NAMED
@@ -830,6 +1096,13 @@ def relied_facts(r, model, snap_rows, fact_ids):
                 while prev.get(x):
                     facts.add(prev[x]["fact-id"])
                     x = prev[x][clo["from"]]
+    # Coarse but sound: every fact of a double-negated collection. Precise
+    # would be "the facts that defeated each inner block", which needs an
+    # evaluator of the rule outside Lean; over-citing costs only extra
+    # flags in impact analysis, never a missed one.
+    for name in double_negated_collections(r):
+        facts.update(row["fact-id"] for row in snap_rows.get(name, [])
+                     if row.get("fact-id") is not None)
     return sorted(facts)
 
 
@@ -867,7 +1140,11 @@ def shape(r):
 
     def coll_shape(name):
         c = colls[name]
-        return f"{c['type']}/{c['via'] or '-'}"
+        # the scope is appended only when it is a parameter, so every rule
+        # written before parameters existed keeps its shape hash
+        sc = c.get("scope")
+        return (f"{c['type']}/{c['via'] or '-'}"
+                + (f"@{sc}" if sc not in (None, "subject") else ""))
 
     def clo_shape(name):
         c = closures[name]
@@ -901,7 +1178,8 @@ def shape(r):
         return out
 
     body = ",".join(walk(r["steps"]))
-    return f"{r['conclusion']}({body})"
+    params = "".join(f"[{p['type']}]" for p in r.get("params", []))
+    return f"{r['conclusion']}{params}({body})"
 
 
 def shape_sha(r):

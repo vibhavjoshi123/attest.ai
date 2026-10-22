@@ -18,6 +18,7 @@ otherwise vanish from the export rather than failing it.
 
 from __future__ import annotations
 
+import collections
 import datetime
 import pathlib
 import re
@@ -107,6 +108,61 @@ def dt(value: str) -> str:
     except ValueError as exc:
         raise ValueError(f"not a real datetime: {value!r} ({exc})") from None
     return text
+
+
+def instant(value: str) -> datetime.datetime:
+    """A ledger time as a comparable instant.
+
+    Parsed rather than compared as text: ISO-8601 strings with differing
+    numbers of fractional digits do not order lexicographically, so `.9`
+    sorts after `.10`.
+    """
+    return datetime.datetime.fromisoformat(_trim(value).replace(" ", "T"))
+
+
+def seal_window(store, at: str) -> str:
+    """Close the as-of window at `at`, so nothing can land inside it later.
+
+    A snapshot asks for the facts whose `recorded-at` is at or before `at`.
+    That set is only frozen — and the certificate's hash only reproducible —
+    if no future write can be stamped at or before `at`. The ledger is
+    strictly monotonic and refuses to move backwards, so the condition is
+    exactly `high-water >= at`.
+
+    Nothing established it. `decide` refused only an as-of later than its
+    own wall clock, which leaves the whole gap between the last recorded
+    fact and the decision's date open: with the mark at the 1st and a
+    decision as of the 10th, a writer whose clock read the 3rd was accepted
+    and its fact landed inside a snapshot already certified and signed off.
+    Clock skew between machines widens the same hole.
+
+    So the window is closed before the snapshot is read, by advancing the
+    mark to `at` if it is behind. Advancing is truthful — `decide` has
+    already refused an as-of in the future, so ledger time really has
+    reached `at`. It is also the one operation a concurrent writer cannot
+    slip past: its own compare-and-set is against the same single row, so it
+    either matches nothing or fails at commit with an isolation conflict,
+    and `Ingest.record` reports both as `ConcurrentWrite` for retry.
+
+    Returns the mark in force afterwards. Writes nothing when the window is
+    already closed, which is every decision about the past.
+    """
+    at = dt(at)
+    mark = Ingest(store).high_water()
+    if mark is not None and instant(mark) >= instant(at):
+        return mark
+    if mark is None:
+        advance = (f'match not {{ $x isa ledger,'
+                   f' has ledger-id "{Ingest.LEDGER}"; }};'
+                   f' insert $l isa ledger,'
+                   f' has ledger-id "{Ingest.LEDGER}",'
+                   f" has high-water {at};")
+    else:
+        advance = (f'match $l isa ledger, has ledger-id "{Ingest.LEDGER}",'
+                   f" has high-water $h; $h == {mark};"
+                   f" update $l has high-water {at};")
+    store.write([advance], must_affect=True)
+    return at
 
 
 def as_of(var: str, t: str) -> str:
@@ -304,23 +360,40 @@ class Store:
         required attribute then fails the export instead of disappearing
         from it.
         """
-        full = self._rows(tx, f"match {base} {attrs} select {select};")
-        bare = self._rows(tx, f"match {base} select {probe};")
-        if len(full) < len(bare):
+        # Compared by IDENTITY, not by count. Counting let the two faults
+        # cancel: one fact missing a required attribute (dropped from
+        # `full`) plus one whose attribute pattern multiplied into two rows
+        # gives equal totals, and both faults passed silently. Every fact
+        # owns `fact-id @key`, so the two sides are compared as multisets of
+        # fact ids and each fault is named separately even when both are
+        # present.
+        # A plain identifier: TypeQL rejects a leading underscore
+        # (`$__probe_fid` is not an identifier_var), and the name has to not
+        # collide with the ones domains bind.
+        tag = "$probe_fid_"
+        full_rows = self._rows(
+            tx, f"match {base} {attrs} {probe} has fact-id {tag};"
+                f" select {select}, {tag};")
+        bare_rows = self._rows(
+            tx, f"match {base} {probe} has fact-id {tag}; select {tag};")
+        key = tag[1:]
+        seen = collections.Counter(r[key] for r in full_rows)
+        want = collections.Counter(r[key] for r in bare_rows)
+        dropped = sorted((want - seen).elements())
+        extra = sorted((seen - want).elements())
+        if dropped:
             raise SnapshotIncomplete(
-                f"export dropped {len(bare) - len(full)} fact(s) lacking "
-                f"required attributes in: {base[:80]}…")
-        if len(full) > len(bare):
-            # The opposite problem, and it used to report itself as the
-            # first one with a negative count — "dropped -3 facts". More
-            # rows WITH the attributes than without means the attribute
-            # pattern multiplied rows, so a fact is about to appear in the
+                f"export dropped {len(dropped)} fact(s) lacking required "
+                f"attributes in: {base[:80]}… — {dropped[:5]}")
+        if extra:
+            # More rows WITH the attributes than facts means the attribute
+            # pattern multiplied rows, so a fact would appear in the
             # snapshot more than once.
             raise SnapshotIncomplete(
-                f"the attribute pattern multiplied rows: {len(full)} with "
-                f"attributes against {len(bare)} facts in: {base[:80]}… "
-                f"— a fact would appear in the snapshot more than once")
-        return full
+                f"the attribute pattern multiplied rows in: {base[:80]}… "
+                f"— {extra[:5]} would appear in the snapshot more than once")
+        return [{k: v for k, v in row.items() if k != key}
+                for row in full_rows]
 
     def close(self) -> None:
         self.driver.close()
@@ -480,9 +553,17 @@ class Ingest:
                 f'match $f isa fact, has fact-id "{ident(fact_id)}";'
                 f' not {{ $f has retracted-at $x; }};'
                 f' insert $f has retracted-at {{stamp}};')
-        except VerificationError as exc:
-            if "ledger moved" in str(exc):
-                raise
+        except ConcurrentWrite:
+            # Discriminate on the TYPE, not on the message. Matching
+            # "ledger moved" caught only the compare-and-set failure; the
+            # commit-time conflict says "another writer committed a
+            # conflicting change" and was reported to the caller as "already
+            # retracted, or does not exist" — a concurrency problem dressed
+            # as a statement about their data, sending them to look in the
+            # wrong place. This is the same coupling to message text that
+            # `WriteMatchedNothing.index` was introduced to remove.
+            raise
+        except WriteMatchedNothing:
             raise VerificationError(
                 f"fact {fact_id!r} is already retracted, or does not exist"
             ) from None
