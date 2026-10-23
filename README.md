@@ -160,10 +160,17 @@ What each call does:
 - **`publish`** stores the rule source, the compiled Lean library, the
   generated types and any hand-written theorem modules in TypeDB, each by
   hash.
-- **`decide`** closes the as-of window first — advancing the ledger to the
+- **`decide`** closes the as-of window — advancing the ledger to the
   decision's date if it is behind, so no later write can be stamped inside a
   snapshot that has already been certified — then takes the snapshot, asks
-  TypeDB to search, and has Lean check the result. `Certificate.decided_by` says how the verdict was reached:
+  TypeDB to search, and has Lean check the result. The window is closed
+  immediately before the snapshot is read, not on entry: the ledger is
+  shared, and a decision refused for rule drift or a bad parameter should
+  not have moved it for everybody. A writer whose clock then sits behind
+  that mark by less than `Ingest.SKEW_TOLERANCE` is stamped just past it
+  rather than refused, so one machine's clock skew cannot stall the
+  others; a clock further behind is treated as wrong, not skewed, and is
+  still refused. `Certificate.decided_by` says how the verdict was reached:
   `witness` (TypeDB proposed facts and the kernel verified them),
   `negation` (the kernel decided the rule does **not** hold, over the whole
   snapshot), or `evaluation` (the kernel decided it without the search).

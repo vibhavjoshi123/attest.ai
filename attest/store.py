@@ -161,7 +161,20 @@ def seal_window(store, at: str) -> str:
         advance = (f'match $l isa ledger, has ledger-id "{Ingest.LEDGER}",'
                    f" has high-water $h; $h == {mark};"
                    f" update $l has high-water {at};")
-    store.write([advance], must_affect=True)
+    try:
+        store.write([advance], must_affect=True)
+    except ConcurrentWrite:
+        raise                       # commit-time conflict, already named
+    except WriteMatchedNothing:
+        # The compare-and-set lost its race: another writer moved the mark
+        # between the read above and this write. That is retryable, and
+        # reporting it as "a query matched nothing" sends the caller looking
+        # at their data instead — the same confusion `retract` had, in the
+        # code that fixed it.
+        raise ConcurrentWrite(
+            "the ledger moved while the as-of window was being closed: "
+            "another writer recorded a fact concurrently. Retry."
+        ) from None
     return at
 
 
@@ -508,6 +521,10 @@ class Ingest:
 
     #: one microsecond, as a fraction of a second
     TICK = datetime.timedelta(microseconds=1)
+    #: how far behind the mark a clock may be and still be treated as skew
+    #: rather than as a wrong clock. Generous against real skew, tight
+    #: enough that a backdate of hours is still refused.
+    SKEW_TOLERANCE = datetime.timedelta(minutes=5)
 
     def now(self) -> str:
         """The next ledger time: strictly later than the current mark.
@@ -524,12 +541,29 @@ class Ingest:
         stamp = dt(self.clock())
         if mark is None:
             return stamp
-        if stamp <= mark:
-            if stamp < mark[:len(stamp)] and not mark.startswith(stamp):
+        if instant(stamp) <= instant(mark):
+            # Behind the mark. Two very different causes, and they need
+            # different answers:
+            #
+            #   a clock a little behind the mark — ordinary skew, or a mark
+            #   that a decision moved ahead by sealing its as-of window —
+            #   is stepped past, exactly as a same-second collision already
+            #   was. Refusing here made one machine's skew everyone's
+            #   problem: a decider whose clock ran two minutes fast sealed
+            #   the mark two minutes ahead, and every other writer, with a
+            #   correct clock, was refused as "backdating" until real time
+            #   caught up. Stepping past also protects replay better than
+            #   refusing does — the fact lands AFTER the sealed window
+            #   instead of not landing at all.
+            #
+            #   a clock far behind the mark is not skew. It is a broken
+            #   clock or a deliberate backdate, and silently restamping it
+            #   would hide that, so it is still refused.
+            behind = instant(mark) - instant(stamp)
+            if behind > self.SKEW_TOLERANCE:
                 raise ValueError(
-                    f"ledger time {stamp} is before high-water mark {mark}: "
-                    f"backdating refused")
-            # same instant, or inside the same second: step past the mark
+                    f"ledger time {stamp} is {behind} before high-water mark "
+                    f"{mark}: backdating refused")
             stamp = self._after(mark)
         return stamp
 

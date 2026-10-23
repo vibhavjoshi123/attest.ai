@@ -91,12 +91,41 @@ class Check:
     #: the exact file checked, kept so a stored proof can be regenerated and
     #: compared byte for byte
     source: str = ""
+    #: what happened, which `accepted` alone cannot say:
+    #:   `proved`   Lean ran and accepted the proof
+    #:   `refuted`  Lean ran and rejected it (an error, `sorry`, a bad axiom)
+    #:   `refused`  the file was refused before Lean saw it (denylist)
+    #:   `not-run`  Lean did not finish: the build failed, it timed out, or
+    #:              it could not be started
+    #: A timeout and a rejection were both just `accepted=False`, so a
+    #: witness the kernel never finished checking was reported as one it had
+    #: REJECTED — and the decision recorded as a disagreement it was not.
+    outcome: str = ""
+
+    OUTCOMES = ("proved", "refuted", "refused", "not-run")
+
+    def __post_init__(self) -> None:
+        if not self.outcome:
+            object.__setattr__(self, "outcome",
+                               "proved" if self.accepted else "refuted")
+        if self.outcome not in self.OUTCOMES:
+            raise ValueError(f"unknown outcome {self.outcome!r}")
+        if (self.outcome == "proved") != self.accepted:
+            raise ValueError(f"outcome {self.outcome!r} contradicts "
+                             f"accepted={self.accepted}")
+
+    @property
+    def ran(self) -> bool:
+        """Whether Lean ran to completion on this file. Only a check that
+        ran says anything about the proof."""
+        return self.outcome in ("proved", "refuted")
 
     def as_dict(self) -> dict[str, object]:
         return {
             "theorem": self.theorem, "name": self.name,
             "statement": self.statement, "proof": self.proof,
-            "accepted": self.accepted, "axioms": list(self.axioms),
+            "accepted": self.accepted, "outcome": self.outcome,
+            "axioms": list(self.axioms),
             "reason": self.reason, "file": self.file,
         }
 
@@ -219,7 +248,7 @@ class Kernel:
                 theorem=f"{namespace}.{name}", name=name, statement=statement,
                 proof=proof, accepted=False, axioms=(),
                 reason=f"forbidden construct in case file: {bad!r}",
-                file="", source=source)
+                file="", source=source, outcome="refused")
             self.checks.append(result)
             return result
         try:
@@ -229,7 +258,7 @@ class Kernel:
             result = Check(
                 theorem=f"{namespace}.{name}", name=name, statement=statement,
                 proof=proof, accepted=False, axioms=(), reason=str(exc)[:160],
-                file="", source=source)
+                file="", source=source, outcome="not-run")
             self.checks.append(result)
             return result
         path = self.case_dir / f"{namespace}_{name}.lean"
@@ -248,7 +277,7 @@ class Kernel:
                 theorem=f"{namespace}.{name}", name=name, statement=statement,
                 proof=proof, accepted=False, axioms=(),
                 reason=f"kernel check did not complete: {type(exc).__name__}",
-                file=self._shown(path), source=source)
+                file=self._shown(path), source=source, outcome="not-run")
             self.checks.append(result)
             return result
         log = completed.stdout + completed.stderr
@@ -288,6 +317,7 @@ class Kernel:
             theorem=f"{namespace}.{name}", name=name, statement=statement,
             proof=proof, accepted=accepted, axioms=tuple(sorted(used)),
             reason=reason, file=self._shown(path), source=source,
+            outcome="proved" if accepted else "refuted",
         )
         self.checks.append(result)
         return result
@@ -311,7 +341,7 @@ class Kernel:
             return Check(theorem=theorem, name=theorem, statement="",
                          proof="", accepted=False, axioms=(),
                          reason=f"forbidden construct in stored proof: {bad!r}",
-                         file=str(path), source=source)
+                         file=str(path), source=source, outcome="refused")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(source)
         try:
@@ -323,7 +353,7 @@ class Kernel:
             return Check(theorem=theorem, name=theorem, statement="",
                          proof="", accepted=False, axioms=(),
                          reason=f"check did not complete: {type(exc).__name__}",
-                         file=str(path), source=source)
+                         file=str(path), source=source, outcome="not-run")
         log = completed.stdout + completed.stderr
         lines = axiom_reports(log)
         used = lines[0][1] if len(lines) == 1 else set()
@@ -352,7 +382,8 @@ class Kernel:
             else f"disallowed axioms {sorted(used - self.allowed_axioms)}")
         return Check(theorem=theorem, name=theorem, statement="", proof="",
                      accepted=ok, axioms=tuple(sorted(used)), reason=reason,
-                     file=str(path), source=source)
+                     file=str(path), source=source,
+                     outcome="proved" if ok else "refuted")
 
     def version(self) -> str:
         """The toolchain that will actually check a proof here.

@@ -109,11 +109,17 @@ class Domain(Protocol):
     #: :func:`attest.affected_decisions` to find decisions broken by a fact
     #: ADDED after they were taken. `{fid}` is substituted with the fact id.
     #:
-    #: This is required, not optional. The core cannot know which role of
-    #: which relation makes a fact "about" a covered item, and a domain that
-    #: supplies none gets only the retraction half of impact analysis — so a
-    #: later fact silently leaves every earlier decision looking valid.
-    #: Declare `scope_anchors = ()` to say that absence is deliberate.
+    #: This is required, not optional. A domain that supplies none gets only
+    #: the retraction half of impact analysis — so a later fact silently
+    #: leaves every earlier decision looking valid. Declare
+    #: `scope_anchors = ()` to say that absence is deliberate.
+    #:
+    #: Most anchors follow from the rule itself — a scoped collection's
+    #: `via` role, a closure's start role, a global collection's joined role
+    #: — and :func:`attest.runner.anchors` derives those and merges them
+    #: with these. So a domain need only write what the rule cannot say:
+    #: `sync` warns about any collection the rule reads that no anchor,
+    #: written or derived, covers.
     scope_anchors: tuple[str, ...]
 
     def scope(self, snapshot: Snapshot) -> list[tuple[str, str, str]]:

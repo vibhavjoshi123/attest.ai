@@ -4,8 +4,12 @@ Core: nothing domain-specific. Paths and namespaces come from the caller, so a
 domain's rules and Lean package can live outside this repository.
 
 
-    <name>.rule ──compile──┬──> <LeanDir>/<Rules>/<Name>.lean   (the authority)
-                           └──> TypeQL `fun` defined in TypeDB   (fast, untrusted search)
+    <name>.rule ─parse─> rule ─resolve(model)─> IR ─┬─> <LeanDir>/<Rules>/<Name>.lean   (the authority)
+                                                    └─> TypeQL `fun` defined in TypeDB   (fast, untrusted search)
+
+`parse` settles scope; `resolve` settles everything that needs the schema,
+once, and every generator reads its nodes (see "the IR" below). Neither
+compiled form works anything out about the rule for itself.
 
 Both outputs embed the rule source's sha256. Before every decision,
 `check(store, rule)` recompiles the rule and requires that
@@ -29,6 +33,7 @@ Rule language (line-based):
 `require x.f is-a y.g` means: x.f is y.g, or reaches y.g through the closure.
 """
 import hashlib, json, os, re
+from dataclasses import dataclass
 
 from . import typebridge as tb
 
@@ -632,27 +637,261 @@ def scope_type(r, collection):
     return next(p["type"] for p in r["params"] if p["name"] == sc)
 
 
-def binder_guards(step, colls):
-    """The conjuncts every `some` carries beyond the rule's own conditions.
+# ------------------------------------------------------------------- the IR
+#
+# One resolved form of a rule, read by every generator that needs the schema.
+#
+# `parse` and `_check` settle SCOPE: which binder a name refers to, which
+# closure a walk means, what is visible inside a `none of`. What they cannot
+# settle without the schema is what each side of a comparison IS — a role or
+# an attribute, an enum, an integer, which key a named entity is compared on,
+# which type plays a closure's start role. The generators used to work that
+# out for themselves, each from the raw step dicts: `compile_lean` and
+# `compile_typeql` both called `_side` on every comparison, both called
+# `role_key`, and only one of them checked that an enum literal is a declared
+# value or that a closure's start role has a single player. Two readings of
+# one rule is the shape every drift bug in this file's history has had, and
+# the per-case differential cannot see the case where both are wrong the
+# same way.
+#
+# `resolve` does it once. Each comparison side becomes a `Field`, `Lit` or
+# `AsOf`; each walk carries its `Clo`; each binder its `Coll` and whether it
+# is cited in the witness; each `none of` the outer binders it reads. Every
+# model-dependent check runs here, so a rule either resolves — and then both
+# compiled forms are generated from the same nodes — or is refused before
+# either is written.
 
-    Both of these were checked by the compiled TypeQL search and by nothing
-    in the authority, so the kernel's statement was weaker than the search's
-    question — the one asymmetry a per-case differential cannot report,
-    because both forms agree on every snapshot the export actually builds.
-    """
-    collection = colls[step["coll"]]
-    out = []
-    if collection.get("via"):
-        out.append(f"{step['var']}.{tb.camel(collection['via'])} = "
-                   f"s.{scope_field(collection)}")
-    out.append(f"{step['var']}.retractedAt = none")
-    return out
+
+@dataclass(frozen=True)
+class Coll:
+    """A collection, with its scope already worked out for both forms."""
+    name: str
+    type: str
+    via: str | None
+    #: the declared scope (`None` = subject), kept for messages and shape
+    scope: str | None
+    #: the Lean snapshot field and the TypeQL variable the scope is read
+    #: from, and the scope's type — set only when the collection is scoped
+    lean_scope: str | None = None
+    tql_scope: str | None = None
+    scope_type: str | None = None
 
 
-def compile_lean(r, model, rules_namespace, schema_namespace):
+@dataclass(frozen=True)
+class Clo:
+    """A closure: its collection, roles, both generated names, and the one
+    type that plays its start role."""
+    name: str
+    coll: Coll
+    frm: str
+    to: str
+    #: the Lean definition's name and the TypeQL function's
+    lean_fn: str
+    tql_fn: str
+    player: str
+
+
+@dataclass(frozen=True)
+class Binder:
+    var: str
+    type: str
+    coll: Coll
+    #: how many `none of` blocks enclose it
+    depth: int
+    #: position in the witness, or None for a binder under a negation —
+    #: an absence has no fact to cite
+    witness: int | None
+
+    def guards(self) -> list[str]:
+        """The conjuncts every `some` carries beyond the rule's own
+        conditions: the scope, and non-retraction.
+
+        Both were once checked by the compiled TypeQL search and by nothing
+        in the authority, so the kernel's statement was weaker than the
+        search's question — the one asymmetry a per-case differential cannot
+        report, because both forms agree on every snapshot the export builds.
+        """
+        out = []
+        if self.coll.via:
+            out.append(f"{self.var}.{tb.camel(self.coll.via)} = "
+                       f"s.{self.coll.lean_scope}")
+        out.append(f"{self.var}.retractedAt = none")
+        return out
+
+
+@dataclass(frozen=True)
+class Field:
+    """`var.field`: the TypeDB name, the Lean field, and the bridge's kind
+    (`role1`, `roleN`, `enum`, `int`, `str`, with `?` when optional)."""
+    var: str
+    field: str
+    lean: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class Lit:
+    value: str
+
+
+@dataclass(frozen=True)
+class AsOf:
+    """`as-of-day`, plus or minus a whole number of days."""
+    offset: int
+
+
+@dataclass(frozen=True)
+class Require:
+    lhs: Field
+    op: str
+    rhs: Field | Lit | AsOf
+    #: the closure a walk uses; None for a comparison
+    closure: Clo | None
+    #: the key attribute a named entity is compared on, when one is named
+    key: str | None
+    #: the rule's own line, for messages
+    text: str
+
+
+@dataclass(frozen=True)
+class Some:
+    binder: Binder
+
+
+@dataclass(frozen=True)
+class NoneOf:
+    steps: tuple
+    #: binders bound OUTSIDE this block that it reads
+    free: frozenset
+
+
+@dataclass(frozen=True)
+class IR:
+    rule: dict
+    colls: dict
+    closures: dict
+    binders: dict
+    steps: tuple
+    witness_fn: str
+
+
+def _ir_side(r, model, expr) -> Field | Lit | AsOf:
+    x = _side(r, model, expr)
+    if x[0] == "field":
+        return Field(var=x[1], field=x[2], lean=x[3], kind=x[4])
+    if x[0] == "asof":
+        return AsOf(x[1])
+    return Lit(x[1])
+
+
+def resolve(r, model) -> IR:
+    """The rule, resolved against the schema once. Refuses what either
+    compiled form could not express exactly."""
     _reject_role_vs_literal(r, model)
     _reject_bad_comparison(r, model)
-    colls = {c["name"]: c for c in r["collections"]}
+    wname, cnames = fn_names(r)
+
+    colls = {}
+    for c in r["collections"]:
+        colls[c["name"]] = Coll(
+            name=c["name"], type=c["type"], via=c["via"], scope=c["scope"],
+            lean_scope=scope_field(c) if c["via"] else None,
+            tql_scope=scope_var(r, c) if c["via"] else None,
+            scope_type=scope_type(r, c) if c["via"] else None)
+
+    closures = {}
+    for k in r["closures"]:
+        cc = colls[k["coll"]]
+        # Which type a closure walks from is a property of the schema, and
+        # only the TypeQL generator used to ask: a start role played by two
+        # types compiled to valid Lean and was refused at `define`. Asked
+        # here, both forms are refused together.
+        players = [n for n, t in model["types"].items()
+                   if f"{cc.type}:{k['from']}" in t["plays"]]
+        if len(players) != 1:
+            raise RuleError(f"closure {k['name']}: expected one player type "
+                            f"for {cc.type}:{k['from']}, got {players}")
+        closures[k["name"]] = Clo(
+            name=k["name"], coll=cc, frm=k["from"], to=k["to"],
+            lean_fn=tb.camel(k["name"]), tql_fn=cnames[k["name"]],
+            player=players[0])
+
+    binders = {}
+    witness = iter(range(len(r["steps"])))
+
+    def block(steps, depth):
+        """(resolved steps, variables read in this block, variables bound
+        in it — nested blocks included)"""
+        out, read, bound = [], set(), set()
+        for s in steps:
+            if s["kind"] == "some":
+                b = Binder(var=s["var"], type=s["type"], coll=colls[s["coll"]],
+                           depth=depth,
+                           witness=next(witness) if depth == 0 else None)
+                binders[b.var] = b
+                bound.add(b.var)
+                out.append(Some(b))
+                continue
+            if s["kind"] == "none":
+                inner, inner_read, inner_bound = block(s["steps"], depth + 1)
+                out.append(NoneOf(tuple(inner),
+                                  frozenset(inner_read - inner_bound)))
+                read |= inner_read
+                bound |= inner_bound
+                continue
+            text = f"{s['lhs']} {s['op']} {s['rhs']}"
+            lhs = _ir_side(r, model, s["lhs"])
+            rhs = _ir_side(r, model, s["rhs"])
+            for side in (lhs, rhs):
+                if isinstance(side, Field):
+                    read.add(side.var)
+            clo = closures[s["closure"]] if s["op"] not in COMPARISONS else None
+            key = None
+            if clo is not None:
+                # A closure walks between ENTITIES, and a Lean role is one
+                # key while a roleN is a list: anything but a single-valued
+                # role on either side compiled to Lean that does not build or
+                # TypeQL that `define` refuses, each failing on its own.
+                for side in (lhs, rhs):
+                    if isinstance(side, Field) and side.kind != "role1":
+                        raise RuleError(
+                            f"`{side.var}.{side.field}` is "
+                            + ("an attribute, not a role"
+                               if not side.kind.startswith("role")
+                               else "a role with several players")
+                            + ": a closure walks between single entities, "
+                              "so it cannot start or end at one")
+                if isinstance(rhs, Lit):
+                    key = role_key(r, model, ("field", lhs.var, lhs.field,
+                                              lhs.lean, lhs.kind))
+            elif isinstance(rhs, Lit):
+                if lhs.kind.startswith("role"):
+                    key = role_key(r, model, ("field", lhs.var, lhs.field,
+                                              lhs.lean, lhs.kind))
+                elif lhs.kind == "enum":
+                    # Lean compares a constructor and TypeQL the raw string,
+                    # and constructor names are mangled (`é`, `ü` → `_`), so a
+                    # literal that is not a declared value could mean one
+                    # thing to each form. Only a declared value is allowed —
+                    # checked once, for both, where it used to be checked by
+                    # the Lean generator alone.
+                    allowed = model["attributes"][lhs.field]["values"] or []
+                    if rhs.value not in allowed:
+                        raise RuleError(
+                            f"`{text}`: {rhs.value!r} is not one of the "
+                            f"values of {lhs.field!r}: {allowed}")
+            out.append(Require(lhs=lhs, op=s["op"], rhs=rhs, closure=clo,
+                               key=key, text=text))
+        return out, read, bound
+
+    steps, _read, _bound = block(r["steps"], 0)
+    return IR(rule=r, colls=colls, closures=closures, binders=binders,
+              steps=tuple(steps), witness_fn=wname)
+
+
+# ------------------------------------------------------------------ to Lean
+def compile_lean(r, model, rules_namespace, schema_namespace):
+    ir = resolve(r, model)
     L = ["/-",
          f"  GENERATED from rule {r['id']} by attest/rulec.py. Do not edit.",
          f"  rule {r['id']} {r['version']}",
@@ -666,8 +905,8 @@ def compile_lean(r, model, rules_namespace, schema_namespace):
          f'def ruleSha256 : String := "{r["sha"]}"', "",
          "/-- What one case may look at: values of the types generated from TypeDB. -/",
          "structure Snapshot where"]
-    for c in r["collections"]:
-        L.append(f"  {c['name']} : List {tb.pascal(c['type'])}")
+    for c in ir.colls.values():
+        L.append(f"  {c.name} : List {tb.pascal(c.type)}")
     if scoped(r):
         # The authority used to say nothing about WHOSE facts these are.
         # `collection X : T for subject via R` compiled into the TypeQL
@@ -689,12 +928,12 @@ def compile_lean(r, model, rules_namespace, schema_namespace):
     # EVERY declared closure gets a definition. Emitting only the first
     # while a rule could name a second is how two hierarchies in one rule
     # failed to build at all.
-    for clo in r["closures"]:
-        cc = colls[clo["coll"]]
-        ty = tb.pascal(cc["type"])
-        fr, to = tb.camel(clo["from"]), tb.camel(clo["to"])
-        fn = tb.camel(clo["name"])
-        if cc["via"]:
+    for clo in ir.closures.values():
+        cc = clo.coll
+        ty = tb.pascal(cc.type)
+        fr, to = tb.camel(clo.frm), tb.camel(clo.to)
+        fn = clo.lean_fn
+        if cc.via:
             # A closure over a SCOPED collection walks only the scope's own
             # edges. The fold used to walk the whole list and rely on the
             # export to have scoped it, while the compiled search walked
@@ -702,19 +941,19 @@ def compile_lean(r, model, rules_namespace, schema_namespace):
             # nodes then reached through each other's edges in the search,
             # the kernel rejected the witness, and the verdict was recorded
             # as a disagreement. Now both forms carry the scope.
-            vf = tb.camel(cc["via"])
-            L += [f"/-- closure `{clo['name']}` over `{clo['coll']}` (scoped to "
-                  f"`{cc['scope'] or 'subject'}`), {clo['from']} → {clo['to']}: one round.",
+            vf = tb.camel(cc.via)
+            L += [f"/-- closure `{clo.name}` over `{cc.name}` (scoped to "
+                  f"`{cc.scope or 'subject'}`), {clo.frm} → {clo.to}: one round.",
                   "    Only unretracted edges belonging to the scope are walked. -/",
                   f"def {fn}Step (sc : String) (edges : List {ty}) (xs : List String) : List String :=",
                   f"  (xs ++ (edges.filter (fun e => e.retractedAt.isNone && "
                   f"e.{vf} == sc && xs.contains e.{fr})).map (·.{to})).eraseDups", "",
                   f"/-- `x` itself and everything it reaches within the scope. -/",
                   f"def {fn} (s : Snapshot) (x : String) : List String :=",
-                  f"  (List.range (s.{clo['coll']}.length + 1)).foldl "
-                  f"(fun xs _ => {fn}Step s.{scope_field(cc)} s.{clo['coll']} xs) [x]", ""]
+                  f"  (List.range (s.{cc.name}.length + 1)).foldl "
+                  f"(fun xs _ => {fn}Step s.{cc.lean_scope} s.{cc.name} xs) [x]", ""]
             continue
-        L += [f"/-- closure `{clo['name']}` over `{clo['coll']}`, {clo['from']} → {clo['to']}: "
+        L += [f"/-- closure `{clo.name}` over `{cc.name}`, {clo.frm} → {clo.to}: "
               "one round.",
               "",
               "    A retracted edge is not walked. The TypeQL closure has",
@@ -733,42 +972,30 @@ def compile_lean(r, model, rules_namespace, schema_namespace):
               f"/-- `x` itself and everything it reaches; `edges.length + 1` rounds reach the",
               f"    fixpoint on any finite graph, cycles included. -/",
               f"def {fn} (s : Snapshot) (x : String) : List String :=",
-              f"  (List.range (s.{clo['coll']}.length + 1)).foldl "
-              f"(fun xs _ => {fn}Step s.{clo['coll']} xs) [x]", ""]
+              f"  (List.range (s.{cc.name}.length + 1)).foldl "
+              f"(fun xs _ => {fn}Step s.{cc.name} xs) [x]", ""]
 
-    def cond(s):
-        a, b = _side(r, model, s["lhs"]), _side(r, model, s["rhs"])
-
+    def cond(q: Require) -> str:
         def lean(x):
-            if x[0] == "field":
-                return f"{x[1]}.{x[3]}"
-            if x[0] == "asof":
-                return ("s.asOfDay" if x[1] == 0 else
-                        f"(s.asOfDay {'-' if x[1] < 0 else '+'} {abs(x[1])})")
+            if isinstance(x, Field):
+                return f"{x.var}.{x.lean}"
+            if isinstance(x, AsOf):
+                return ("s.asOfDay" if x.offset == 0 else
+                        f"(s.asOfDay {'-' if x.offset < 0 else '+'} "
+                        f"{abs(x.offset)})")
             # how a literal is written depends on the field it is compared
-            # with: a constructor for an enum, a bare numeral for an Int, a
-            # quoted string otherwise
-            if a[0] == "field" and a[4] == "enum":
-                # Lean compares a constructor and TypeQL the raw string, and
-                # constructor names are mangled (`é`, `ü` → `_`), so a literal
-                # that is not one of the declared values could mean one thing
-                # to each form. Only a declared value is allowed.
-                allowed = model["attributes"][a[2]]["values"] or []
-                if x[1] not in allowed:
-                    raise RuleError(
-                        f"`{s['lhs']} {s['op']} {s['rhs']}`: {x[1]!r} is not "
-                        f"one of the values of {a[2]!r}: {allowed}")
-                return f".{tb.ctor(x[1])}"
-            if a[0] == "field" and a[4] == "int":
-                n = int(x[1])
+            # with: a constructor for an enum (a declared value — `resolve`
+            # checked), a bare numeral for an Int, a quoted string otherwise
+            if q.lhs.kind == "enum":
+                return f".{tb.ctor(x.value)}"
+            if q.lhs.kind == "int":
+                n = int(x.value)
                 return f"({n})" if n < 0 else str(n)
-            return tb.lean_str(x[1])
+            return tb.lean_str(x.value)
 
-        if s["op"] not in COMPARISONS:
-            # the step carries which closure it walks, resolved in `_check`;
-            # neither compiler guesses
-            return f"{lean(b)} ∈ {tb.camel(s['closure'])} s {lean(a)}"
-        return f"{lean(a)} {LEAN_OP[s['op']]} {lean(b)}"
+        if q.closure is not None:
+            return f"{lean(q.rhs)} ∈ {q.closure.lean_fn} s {lean(q.lhs)}"
+        return f"{lean(q.lhs)} {LEAN_OP[q.op]} {lean(q.rhs)}"
 
     def build(steps, i, depth):
         """One block as a Lean proposition.
@@ -782,19 +1009,19 @@ def compile_lean(r, model, rules_namespace, schema_namespace):
             return "True"
         s = steps[i]
         rest = build(steps, i + 1, depth)
-        if s["kind"] == "some":
-            parts = binder_guards(s, colls)
+        if isinstance(s, Some):
+            parts = s.binder.guards()
             if rest != "True":
                 parts.append(rest)
             body = f" ∧\n{pad}".join(parts) if parts else "True"
-            return f"∃ {s['var']} ∈ s.{s['coll']},\n{pad}{body}"
-        here = (f"¬ ({build(s['steps'], 0, depth + 1)})"
-                if s["kind"] == "none" else cond(s))
+            return f"∃ {s.binder.var} ∈ s.{s.binder.coll.name},\n{pad}{body}"
+        here = (f"¬ ({build(s.steps, 0, depth + 1)})"
+                if isinstance(s, NoneOf) else cond(s))
         return here if rest == "True" else f"{here} ∧\n{pad}{rest}"
 
     L += [f"/-- {r['says']} -/",
           f"def {r['conclusion']} (s : Snapshot) : Prop :=",
-          f"  {build(r['steps'], 0, 0)}", "",
+          f"  {build(ir.steps, 0, 0)}", "",
           "-- Elaboration budget only. Putting the subject and the retraction",
           "-- check on every binder grew the proposition past the default",
           "-- instance-search size, and the search gave up on the largest",
@@ -824,144 +1051,131 @@ def fn_names(r):
 
 def compile_typeql(r, model):
     """`define` block with the closure function(s) and the witness function."""
-    _reject_role_vs_literal(r, model)
-    _reject_bad_comparison(r, model)
-    colls = {c["name"]: c for c in r["collections"]}
-    wname, cnames = fn_names(r)
+    ir = resolve(r, model)
     out = ["define"]
 
     def active(v):
         return (f"{v} has recorded-at {v}_ra; {v}_ra <= $t; "
                 f"not {{ {v} has retracted-at {v}_rx; {v}_rx <= $t; }};")
 
-    for clo in r["closures"]:
-        ety = colls[clo["coll"]]["type"]
-        players = [n for n, t in model["types"].items()
-                   if f"{ety}:{clo['from']}" in t["plays"]]
-        if len(players) != 1:
-            raise RuleError(f"closure {clo['name']}: expected one player type for "
-                            f"{ety}:{clo['from']}, got {players}")
-        pt = players[0]
-        f = cnames[clo["name"]]
-        cc = colls[clo["coll"]]
-        if cc["via"]:
+    for clo in ir.closures.values():
+        cc, pt, f = clo.coll, clo.player, clo.tql_fn
+        if cc.via:
             # scoped: the walk is restricted to the scope's own edges, the
             # same restriction the Lean fold applies
-            st = scope_type(r, cc)
-            out += [f"fun {f}($x: {pt}, $sc: {st}, $t: datetime) -> {{ {pt} }}:",
+            out += [f"fun {f}($x: {pt}, $sc: {cc.scope_type}, $t: datetime) -> {{ {pt} }}:",
                     "match",
                     f"  {{ $y isa {pt}; $y is $x; }} or",
                     f"  {{ let $m in {f}($x, $sc, $t);",
-                    f"    $e isa {ety}, links ({clo['from']}: $m, {clo['to']}: $y, "
-                    f"{cc['via']}: $sc); {active('$e')} }};",
+                    f"    $e isa {cc.type}, links ({clo.frm}: $m, {clo.to}: $y, "
+                    f"{cc.via}: $sc); {active('$e')} }};",
                     "return { $y };", ""]
             continue
         out += [f"fun {f}($x: {pt}, $t: datetime) -> {{ {pt} }}:",
                 "match",
                 f"  {{ $y isa {pt}; $y is $x; }} or",
                 f"  {{ let $m in {f}($x, $t);",
-                f"    $e isa {ety}, links ({clo['from']}: $m, {clo['to']}: $y); {active('$e')} }};",
+                f"    $e isa {cc.type}, links ({clo.frm}: $m, {clo.to}: $y); {active('$e')} }};",
                 "return { $y };", ""]
 
     subj = r["subject"]
-    closures_by_name = {c["name"]: c for c in r["closures"]}
     body, bound_fields, rets = [], {}, []
     #: which statement list a variable's scope writes into. A field of an
     #: OUTER variable read inside `not { … }` has to be bound outside it, or
     #: the binding is local to the negation and the outer body never makes it.
+    #: (`NoneOf.free` names exactly those variables.)
     var_sink, k = {}, [0]
 
-    def fvar(v, f, how):
-        key = (v, f)
+    def fvar(x: Field):
+        key = (x.var, x.field)
         if key not in bound_fields:
-            name = f"${v}_{f.replace('-', '_')}"
-            var_sink.get(v, body).append(
-                f"  ${v} links ({f}: {name});" if how.startswith("role")
-                else f"  ${v} has {f} {name};")
+            name = f"${x.var}_{x.field.replace('-', '_')}"
+            var_sink.get(x.var, body).append(
+                f"  ${x.var} links ({x.field}: {name});"
+                if x.kind.startswith("role")
+                else f"  ${x.var} has {x.field} {name};")
             bound_fields[key] = name
         return bound_fields[key]
 
-    def emit(steps, sink, witness):
-        """One block. `witness` is False inside a negation: an absence has no
-        fact to cite, so its binders contribute nothing to the witness."""
+    def emit(steps, sink):
         for s in steps:
-            if s["kind"] == "none":
+            if isinstance(s, NoneOf):
                 inner = []
-                emit(s["steps"], inner, False)
+                emit(s.steps, inner)
                 sink.append("  not {")
                 sink += ["  " + line for line in inner]
                 sink.append("  };")
                 continue
-            if s["kind"] == "some":
-                c = colls[s["coll"]]
-                via = (f", links ({c['via']}: {scope_var(r, c)})"
-                       if c["via"] else "")
-                sink.append(f"  ${s['var']} isa {s['type']}{via}; "
-                            f"{active('$' + s['var'])}")
-                var_sink[s["var"]] = sink
-                if witness:
-                    sink.append(f"  ${s['var']} has fact-id ${s['var']}_fid;")
-                    rets.append(f"${s['var']}_fid")
+            if isinstance(s, Some):
+                b = s.binder
+                via = (f", links ({b.coll.via}: {b.coll.tql_scope})"
+                       if b.coll.via else "")
+                sink.append(f"  ${b.var} isa {b.type}{via}; "
+                            f"{active('$' + b.var)}")
+                var_sink[b.var] = sink
+                # an absence has no fact to cite, so only binders outside
+                # every negation contribute to the witness
+                if b.witness is not None:
+                    sink.append(f"  ${b.var} has fact-id ${b.var}_fid;")
+                    rets.append(f"${b.var}_fid")
                 continue
-            a, b = _side(r, model, s["lhs"]), _side(r, model, s["rhs"])
-            if s["op"] not in COMPARISONS:
+            a, rhs = s.lhs, s.rhs
+            if s.closure is not None:
                 k[0] += 1
-                xa = fvar(a[1], a[2], a[4])
-                closure = cnames[s["closure"]]
-                cc = colls[closures_by_name[s["closure"]]["coll"]]
-                scope_arg = f"{scope_var(r, cc)}, " if cc["via"] else ""
-                sink.append(f"  let $c{k[0]} in {closure}({xa}, {scope_arg}$t);")
-                if b[0] == "lit":
+                xa = fvar(a)
+                cc = s.closure.coll
+                scope_arg = f"{cc.tql_scope}, " if cc.via else ""
+                sink.append(f"  let $c{k[0]} in {s.closure.tql_fn}"
+                            f"({xa}, {scope_arg}$t);")
+                if isinstance(rhs, Lit):
                     # the group is named, so compare the reached entity's key
                     # — the same value Lean compares
-                    key = role_key(r, model, a)
-                    sink.append(f"  $c{k[0]} has {key} $k{k[0]};")
-                    sink.append(f"  $k{k[0]} == {tb.tql_lit(b[1])};")
+                    sink.append(f"  $c{k[0]} has {s.key} $k{k[0]};")
+                    sink.append(f"  $k{k[0]} == {tb.tql_lit(rhs.value)};")
                 else:
-                    sink.append(f"  $c{k[0]} is "
-                                f"{fvar(b[1], b[2], b[4])};")
-            elif b[0] == "lit" and a[4].startswith("role"):
+                    sink.append(f"  $c{k[0]} is {fvar(rhs)};")
+            elif isinstance(rhs, Lit) and a.kind.startswith("role"):
                 # Lean compares the player's KEY, so TypeQL must too: the role
                 # binds the entity, and comparing an entity to a string either
                 # fails at `define` or quietly means something else.
                 k[0] += 1
-                key = role_key(r, model, a)
-                x = fvar(a[1], a[2], a[4])
-                sink.append(f"  {x} has {key} $k{k[0]};")
-                sink.append(f"  $k{k[0]} {TQL_OP[s['op']]} {tb.tql_lit(b[1])};")
-            elif b[0] == "asof":
-                x = fvar(a[1], a[2], a[4])
-                if b[1] == 0:
-                    sink.append(f"  {x} {TQL_OP[s['op']]} $asof_day;")
+                x = fvar(a)
+                sink.append(f"  {x} has {s.key} $k{k[0]};")
+                sink.append(f"  $k{k[0]} {TQL_OP[s.op]} {tb.tql_lit(rhs.value)};")
+            elif isinstance(rhs, AsOf):
+                x = fvar(a)
+                if rhs.offset == 0:
+                    sink.append(f"  {x} {TQL_OP[s.op]} $asof_day;")
                 else:
                     # bound to a name rather than written inline, so the
                     # arithmetic is a `let` the server evaluates once
                     k[0] += 1
-                    sign = "-" if b[1] < 0 else "+"
+                    sign = "-" if rhs.offset < 0 else "+"
                     sink.append(f"  let $d{k[0]} = $asof_day {sign} "
-                                f"{abs(b[1])};")
-                    sink.append(f"  {x} {TQL_OP[s['op']]} $d{k[0]};")
-            elif b[0] == "lit":
-                x = fvar(a[1], a[2], a[4])
-                lit = str(int(b[1])) if a[4] == "int" else tb.tql_lit(b[1])
-                sink.append(f"  {x} {TQL_OP[s['op']]} {lit};")
+                                f"{abs(rhs.offset)};")
+                    sink.append(f"  {x} {TQL_OP[s.op]} $d{k[0]};")
+            elif isinstance(rhs, Lit):
+                x = fvar(a)
+                lit = (str(int(rhs.value)) if a.kind == "int"
+                       else tb.tql_lit(rhs.value))
+                sink.append(f"  {x} {TQL_OP[s.op]} {lit};")
             else:
-                xa, xb = fvar(a[1], a[2], a[4]), fvar(b[1], b[2], b[4])
-                if a[4].startswith("role"):
-                    sink.append(f"  {xa} is {xb};" if s["op"] == "=" else
+                xa, xb = fvar(a), fvar(rhs)
+                if a.kind.startswith("role"):
+                    sink.append(f"  {xa} is {xb};" if s.op == "=" else
                                 f"  not {{ {xa} is {xb}; }};")
                 else:
-                    sink.append(f"  {xa} {TQL_OP[s['op']]} {xb};")
+                    sink.append(f"  {xa} {TQL_OP[s.op]} {xb};")
 
-    emit(r["steps"], body, True)
+    emit(ir.steps, body)
     # Every argument must be used, or TypeDB refuses the function
     # (`[FRP1] Function argument variable … is unused`). A rule whose
     # collections are all global — a check over reference data, say — never
     # mentioned `$subject` and so could not be deployed at all. Typing an
     # otherwise unused argument is a use, and constrains nothing the
     # caller did not already bind.
-    if not any(c["via"] and (c["scope"] in (None, "subject"))
-               for c in r["collections"]):
+    if not any(c.via and (c.scope in (None, "subject"))
+               for c in ir.colls.values()):
         body.insert(0, f"  $subject isa {subj};")
     for i, p in enumerate(r["params"]):
         body.insert(0, f"  $arg{i} isa {p['type']};")
@@ -969,7 +1183,7 @@ def compile_typeql(r, model):
         f"$arg{i}: {p['type']}, " for i, p in enumerate(r["params"])) + "$t: datetime"
     if uses_as_of(r):
         params += ", $asof_day: integer"
-    out += [f"fun {wname}({params}) -> "
+    out += [f"fun {ir.witness_fn}({params}) -> "
             f"{{ {', '.join('fact-id' for _ in rets)} }}:",
             "match", *body,
             f"return {{ {', '.join(rets)} }};", ""]
@@ -984,24 +1198,55 @@ def witness_proof(r, model, snap_rows, fact_ids):
     over the whole snapshot, so it contributes a single `by decide` and no
     record — there is no fact to cite for an absence. None if a fact is not
     in the snapshot."""
-    colls = {c["name"]: c for c in r["collections"]}
+    ir = resolve(r, model)
     by_id = {}
-    for c in r["collections"]:
-        for row in snap_rows[c["name"]]:
-            by_id[(c["name"], row["fact-id"])] = row
+    for c in ir.colls.values():
+        for row in snap_rows[c.name]:
+            by_id[(c.name, row["fact-id"])] = row
     parts, it = [], iter(fact_ids)
-    for s in r["steps"]:
-        if s["kind"] == "some":
-            row = by_id.get((s["coll"], next(it)))
+    for s in ir.steps:
+        if isinstance(s, Some):
+            row = by_id.get((s.binder.coll.name, next(it)))
             if row is None:
                 return None
             # the record, its membership proof, then one `by decide` for each
-            # guard the binder carries (subject scope, non-retraction)
-            parts += [tb.lean_literal(model, s["type"], row), "by decide"]
-            parts += ["by decide"] * len(binder_guards(s, colls))
+            # guard the binder carries (subject scope, non-retraction) — the
+            # same guards `compile_lean` wrote, read off the same node
+            parts += [tb.lean_literal(model, s.binder.type, row), "by decide"]
+            parts += ["by decide"] * len(s.binder.guards())
         else:
             parts.append("by decide")
     return "⟨" + ",\n   ".join(parts) + "⟩"
+
+
+def polarity(r) -> dict[str, frozenset]:
+    """For each collection, the `none of` depths at which the rule reads it.
+
+    A collection is read where a `some` binds it, and — for a closure's
+    collection — where a walk uses the closure. Depth is the number of
+    enclosing `none of` blocks, and its PARITY is the collection's polarity:
+    at even depth more facts can only make the rule truer, at odd depth only
+    falser, because each negation flips the direction.
+
+    Everything impact analysis needs to say about a rule's shape follows from
+    this one map (`double_negated_collections`, `sensitivity`). It used to be
+    one special case — "two deep, and even" — written out where it was
+    needed, and nothing said what the other cases were.
+    """
+    closures = {c["name"]: c for c in r["closures"]}
+    found: dict[str, set] = {c["name"]: set() for c in r["collections"]}
+
+    def walk(steps, depth):
+        for s in steps:
+            if s["kind"] == "none":
+                walk(s["steps"], depth + 1)
+            elif s["kind"] == "some":
+                found.setdefault(s["coll"], set()).add(depth)
+            elif s["op"] not in COMPARISONS:
+                found.setdefault(closures[s["closure"]]["coll"],
+                                 set()).add(depth)
+    walk(r["steps"], 0)
+    return {name: frozenset(depths) for name, depths in found.items()}
 
 
 def double_negated_collections(r):
@@ -1024,21 +1269,101 @@ def double_negated_collections(r):
     `v` (there is none to cite: the proof of an absence names nothing), so
     impact analysis reported that retracting it affected no decision.
     """
-    colls = {c["name"]: c for c in r["collections"]}
-    closures = {c["name"]: c for c in r["closures"]}
-    found = set()
+    colls = {c["name"] for c in r["collections"]}
+    return sorted(c for c, depths in polarity(r).items()
+                  if c in colls and any(d >= 2 and d % 2 == 0
+                                        for d in depths))
 
-    def walk(steps, depth):
+
+def sensitivity(r) -> dict[str, dict[str, list[str]]]:
+    """Which collections a change can flip each verdict through.
+
+    By polarity (see `polarity`), for each of the rule's two verdicts:
+
+        verdict   flipped by RETRACTING a fact in   by ADDING a fact to
+        C         depth 0 (the witness), even ≥ 2   odd depth
+        not C     odd depth                         even depth, 0 included
+
+    A collection named in neither list for a verdict cannot change it, in
+    either direction. This is a statement about the rule's shape, so it is
+    an over-approximation per fact — a retraction from a listed collection
+    MAY flip the verdict — and it is property-tested against a reference
+    evaluator on random snapshots.
+
+    Today `relied_facts` cites, for a `not C` verdict, every fact the
+    snapshot holds. This map is what it would take to narrow that safely,
+    and it is kept separate so narrowing can follow the tests rather than
+    precede them.
+    """
+    pol = polarity(r)
+    even = sorted(c for c, ds in pol.items() if any(d % 2 == 0 for d in ds))
+    odd = sorted(c for c, ds in pol.items() if any(d % 2 == 1 for d in ds))
+    return {
+        "holds": {"retract": even, "add": odd},
+        "fails": {"retract": odd, "add": even},
+    }
+
+
+def scope_anchors(r, model) -> tuple[str, ...]:
+    """The `affected_decisions` anchors this rule implies, derived.
+
+    An anchor finds the decisions a newly recorded fact could break: it binds
+    the item the fact is about, then follows that item's `coverage` edge to
+    the decision. A domain used to write these by hand, and the anchors the
+    shipped domains wrote are mechanical restatements of their rules:
+
+      * a collection scoped `for … via R` is about whatever plays R;
+      * a closure's collection is about the node a walk starts from;
+      * a fact in a global collection that the rule joins, by `=` or by a
+        walk, onto another binder's role is about the entity on that role.
+
+    Asking every domain to copy out what the compiler already knows is how
+    the two drift apart, and `domain.py` names the cost: a missing anchor
+    silently leaves every earlier decision looking valid when a fact is
+    added. `runner.anchors` merges these with the domain's own, and `sync`
+    warns about any collection the rule reads that no anchor covers.
+    """
+    ir = resolve(r, model)
+    found: list[tuple[str, str]] = []
+
+    def add(rel_type, role):
+        if (rel_type, role) not in found:
+            found.append((rel_type, role))
+
+    for c in ir.colls.values():
+        if c.via:
+            add(c.type, c.via)
+    for clo in ir.closures.values():
+        add(clo.coll.type, clo.frm)
+
+    def joins(steps):
         for s in steps:
-            if s["kind"] == "none":
-                walk(s["steps"], depth + 1)
-            elif depth >= 2 and depth % 2 == 0:
-                if s["kind"] == "some":
-                    found.add(s["coll"])
-                elif s["op"] not in COMPARISONS:
-                    found.add(closures[s["closure"]]["coll"])
-    walk(r["steps"], 0)
-    return sorted(c for c in found if c in colls)
+            if isinstance(s, NoneOf):
+                joins(s.steps)
+            elif isinstance(s, Require) and (s.closure or s.op == "="):
+                for side in (s.lhs, s.rhs):
+                    if isinstance(side, Field) and side.kind == "role1":
+                        b = ir.binders[side.var]
+                        if not b.coll.via:
+                            add(b.coll.type, side.field)
+    joins(ir.steps)
+    return tuple(anchor(t, role) for t, role in found)
+
+
+def anchor(rel_type, role) -> str:
+    """One `affected_decisions` anchor: a fact of `rel_type` is about the
+    entity playing `role`, and reaches a decision through its coverage."""
+    return (f'$f isa {rel_type}, has fact-id "{{fid}}", links ({role}: $x);'
+            f' coverage (decision: $d, item: $x);')
+
+
+def anchor_key(pattern: str) -> tuple[str, str] | None:
+    """(type, role) an anchor names, whatever its variable is called, or
+    None for a hand-written pattern of some other shape."""
+    m = re.match(r'\s*\$\w+ isa ([\w-]+), has fact-id "\{fid\}", '
+                 r'links \(([\w-]+): \$x\);\s*'
+                 r'coverage \(decision: \$d, item: \$x\);\s*$', pattern)
+    return (m.group(1), m.group(2)) if m else None
 
 
 def relied_facts(r, model, snap_rows, fact_ids, scopes=None):

@@ -12,7 +12,10 @@ from .kernel import STANDARD_AXIOMS, Check, Kernel
 from .rulec import Drift, RuleError
 from .runner import (
     decisions_after_rule_change,
+    CaseFile,
     Certificate,
+    anchors,
+    case_file,
     affected_decisions,
     decide,
     decisions_relying_on,
@@ -30,6 +33,8 @@ from .runner import (
     sha256,
     sources_of,
     tql_str,
+    unanchored,
+    usable_anchors,
 )
 from .store import (
     CORE_SCHEMA,
@@ -49,11 +54,11 @@ from .typebridge import OutOfSync
 
 __all__ = [
     "CORE_SCHEMA", "STANDARD_AXIOMS",
-    "Certificate", "Check", "ConcurrentWrite", "Domain", "Drift", "Ingest", "Kernel",
+    "CaseFile", "Certificate", "Check", "ConcurrentWrite", "Domain", "Drift", "Ingest", "Kernel",
     "LeanPackage", "OutOfSync", "RuleError", "Snapshot", "SnapshotIncomplete",
     "Recheck", "Store", "StoreConfig", "UnknownSubject", "VerificationError",
-    "affected_decisions", "as_of", "decide", "decisions_relying_on",
+    "affected_decisions", "anchors", "as_of", "case_file", "decide", "decisions_relying_on",
     "dt", "govern", "hash_json", "ident", "instant", "seal_window",
     "lean_snapshot", "make_snapshot", "publish", "record", "rulec", "search",
-    "decisions_after_rule_change", "recheck", "sha256", "sources_of", "sync", "tql_str", "typebridge", "verdicts",
+    "decisions_after_rule_change", "recheck", "sha256", "sources_of", "sync", "tql_str", "typebridge", "unanchored", "usable_anchors", "verdicts",
 ]

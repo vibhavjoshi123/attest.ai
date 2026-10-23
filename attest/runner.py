@@ -26,13 +26,15 @@ import json
 import os
 import pathlib
 import uuid
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
 from . import rulec, typebridge
 from .domain import Domain, Snapshot
 from .kernel import Check, Kernel, case_source
-from .store import VerificationError, dt, ident, seal_window, _trim
+from .store import (VerificationError, dt, ident, instant, seal_window,
+                    _trim)
 
 def verdicts(rule) -> tuple[str, str]:
     """What to call the two outcomes.
@@ -97,6 +99,63 @@ def lean_snapshot(snapshot: Snapshot, model, rule) -> str:
     if rulec.uses_as_of(rule):
         fields.append(f"asOfDay := {as_of_day(snapshot.as_of)}")
     return "def snap : Snapshot :=\n  { " + ",\n    ".join(fields) + " }\n"
+
+
+@dataclass(frozen=True)
+class CaseFile:
+    """Everything that goes into one case file except the theorem itself.
+
+    `decide` writes case files and `recheck` regenerates them to compare
+    byte for byte. They used to assemble the parts separately — namespace,
+    imports, opens, the snapshot definition and the `Iff.rfl` binding line —
+    each with its own copy of the strings. Two copies of what must be one
+    output is how a decision stops rechecking: change the binding line in
+    `decide` and every proof it stores afterwards fails its own replay, or
+    change it in `recheck` and every proof stored before does. Both now build
+    the case from here, so there is one definition of what a case file is.
+    """
+
+    namespace: str
+    imports: tuple[str, ...]
+    opens: tuple[str, ...]
+    #: `def snap …` followed by the binding line
+    defs: str
+    #: the rule's conclusion applied to this snapshot, and its negation
+    positive: str
+    negative: str
+
+    def source(self, name: str, statement: str, proof: str) -> str:
+        """The exact file for one theorem about this case."""
+        return case_source(self.namespace, self.imports, self.opens,
+                           self.defs, name, statement, proof)
+
+    def check(self, kernel: Kernel, name: str, statement: str,
+              proof: str) -> Check:
+        return kernel.check(self.namespace, self.imports, self.opens,
+                            self.defs, name, statement, proof)
+
+
+def case_file(snapshot: Snapshot, model, rule, lean) -> CaseFile:
+    """Build the case for `snapshot` under `rule`, in Lean package `lean`.
+
+    The binding line is what ties the statement to the rule: `theorem holds
+    : True := trivial` is accepted by a kernel check that only sees an opaque
+    string, and this line makes the file assert that the proposition being
+    proved IS the compiled rule's conclusion applied to this snapshot. If a
+    local definition shadows the conclusion, or its name does not resolve,
+    `Iff.rfl` fails to elaborate and the whole case is rejected.
+    """
+    conclusion = rule["conclusion"]
+    rule_module = rulec.module(rule, lean.rules_namespace)
+    positive = f"{conclusion} snap"
+    binding = (f"example : ({positive}) ↔ "
+               f"({rule_module}.{conclusion} snap) := Iff.rfl\n")
+    return CaseFile(
+        namespace=f"Case_{snapshot.sha256[:12]}",
+        imports=(rule_module, *lean.theorem_modules),
+        opens=(lean.schema_namespace, rule_module),
+        defs=lean_snapshot(snapshot, model, rule) + binding,
+        positive=positive, negative=f"¬ ({positive})")
 
 
 def as_of_day(as_of: str) -> int:
@@ -334,6 +393,50 @@ def _unsettled(rule, snapshot, found, attempts, kernel, domain, store,
     return certificate
 
 
+def _differential(verdict, holds, found, witness_accepted, witness_check,
+                  attempts) -> str:
+    """How the search and the kernel compare on one decision.
+
+    Pure, so each case can be tested without a store or a kernel.
+    """
+    # Only attempts that RAN say anything about the proof. A timeout used to
+    # read exactly like a rejection, so a witness the kernel never finished
+    # checking was reported as one it had rejected: with `C` then proved by
+    # evaluation, the search and the kernel agreed on the verdict and the
+    # certificate still said DISAGREE — which `record` refuses.
+    unfinished = [a for a in attempts if not a.ran]
+    if verdict == "ERROR":
+        differential = (
+            "n/a: no verdict; the kernel did not finish "
+            f"({unfinished[0].reason}) — retrying may settle it"
+            # any attempt that did not finish might settle it on a retry
+            if unfinished
+            else "n/a: no verdict; the kernel settled neither the rule nor "
+                 "its negation")
+    elif found and not witness_accepted and witness_check is not None \
+            and not witness_check.ran and verdict == holds:
+        differential = (f"agree: the kernel proved {verdict} by evaluation; "
+                        f"the search's witness was not checked "
+                        f"({witness_check.outcome}: {witness_check.reason})")
+    elif found and not witness_accepted:
+        # The kernel proved the negation, or rejected the witness and proved
+        # the rule some other way: either way the search was wrong, and the
+        # wording says how much of that was observed rather than assumed.
+        differential = (
+            f"DISAGREE: the search's witness was rejected by the kernel; the "
+            f"kernel proved {verdict}"
+            if witness_check is None or witness_check.ran else
+            f"DISAGREE: the search found a witness the kernel did not finish "
+            f"checking ({witness_check.outcome}), and the kernel proved "
+            f"{verdict}")
+    elif not found and verdict == holds:
+        differential = (f"DISAGREE: the search found nothing; the kernel "
+                        f"proved {verdict}")
+    else:
+        differential = "agree"
+    return differential
+
+
 def decide(store, domain: Domain, subject: str, as_of: str, *,
            kernel: Kernel | None = None,
            suppress_search: bool = False,
@@ -351,18 +454,15 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
     # the certificate stops reproducing its own hash.
     now = datetime.datetime.now(datetime.timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%S")
-    if dt(as_of) > now:
+    # Compared as instants, like `seal_window` and `Ingest.now` do. As text
+    # these agreed only because both sides happen to be trimmed to the
+    # second: a sub-second as-of would have ordered by string prefix, where
+    # `...00.1` sorts before `...00.10`.
+    if instant(as_of) > instant(now):
         raise VerificationError(
             f"as-of {dt(as_of)} is in the future (now {now}): a fact written "
             f"later would change this snapshot, so the decision could not be "
             f"replayed")
-    # Refusing a FUTURE as-of is not enough on its own. It leaves the whole
-    # gap between the last recorded fact and the decision's date open: with
-    # the ledger at the 1st and a decision as of the 10th, a writer whose
-    # clock read the 3rd was accepted, and its fact landed inside a snapshot
-    # that had already been certified. Closing the window first makes the
-    # as-of set frozen, which is what the certificate's hash claims.
-    seal_window(store, as_of)
     rule = rulec.load(domain.rule_path)
     model = rulec.check(store, rule, domain.lean.directory,
                         domain.lean.rules_namespace,
@@ -377,34 +477,32 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
         raise VerificationError(
             f"rule {rule['id']} takes parameters {declared}; got "
             f"{sorted(given)}")
+    # Refusing a FUTURE as-of is not enough on its own. It leaves the whole
+    # gap between the last recorded fact and the decision's date open: with
+    # the ledger at the 1st and a decision as of the 10th, a writer whose
+    # clock read the 3rd was accepted, and its fact landed inside a snapshot
+    # that had already been certified. Closing the window makes the as-of
+    # set frozen, which is what the certificate's hash claims.
+    #
+    # Sealed HERE, immediately before the read, and not at the top of this
+    # function: the ledger is shared state, and a decision that is then
+    # refused for drift, out-of-sync types or a bad parameter had already
+    # moved it for everyone. Everything that can refuse this decision
+    # without touching the snapshot has now run.
+    seal_window(store, as_of)
     snapshot = (domain.snapshot(store, subject, as_of, params=given)
                 if declared else domain.snapshot(store, subject, as_of))
     if dict(snapshot.params) != {k: str(v) for k, v in given.items()}:
         raise VerificationError(
             f"the export returned a snapshot for parameters "
             f"{dict(snapshot.params)}, not the {given} asked about")
-    namespace = f"Case_{snapshot.sha256[:12]}"
-    defs = lean_snapshot(snapshot, model, rule)
-    conclusion = rule["conclusion"]
-    positive, negative = f"{conclusion} snap", f"¬ ({conclusion} snap)"
+    # one definition of the case file, shared with `recheck` (see CaseFile)
+    case = case_file(snapshot, model, rule, domain.lean)
+    namespace, positive, negative = case.namespace, case.positive, case.negative
     holds, fails = verdicts(rule)
-    rule_module = rulec.module(rule, domain.lean.rules_namespace)
-    imports = (rule_module, *domain.lean.theorem_modules)
-    opens = (domain.lean.schema_namespace, rule_module)
-
-    # S3: nothing otherwise relates the statement to the rule. `theorem
-    # holds : True := trivial` is accepted by a kernel check that only sees
-    # an opaque string. This line makes the case file assert that the
-    # proposition being proved IS the compiled rule's conclusion applied to
-    # this snapshot — if a local definition shadows it (S4) or the
-    # conclusion name does not resolve, `Iff.rfl` fails to elaborate and the
-    # whole case is rejected.
-    binding = (f"example : ({positive}) ↔ "
-               f"({rule_module}.{conclusion} snap) := Iff.rfl\n")
 
     def attempt(name: str, statement: str, proof: str):
-        return kernel.check(namespace, imports, opens, defs + binding, name,
-                            statement, proof)
+        return case.check(kernel, name, statement, proof)
 
     # With the search suppressed there is nothing to agree or disagree WITH,
     # and saying "agree" asserted a concurrence that was never tested.
@@ -418,6 +516,7 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
     # implicit in the shape of `accepted`
     decided_by = "none"
 
+    witness_check = None                # the attempt on the search's witness
     if found:
         witness = sorted(found)[0]           # deterministic across re-runs
         term = rulec.witness_proof(rule, model, snapshot.data, witness)
@@ -433,13 +532,13 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
                 statement=positive, proof="", accepted=False, axioms=(),
                 reason="snapshot incomplete: the search's witness names facts "
                        "the export did not produce",
-                file="", source="")
+                file="", source="", outcome="not-run")
             attempts.append(incomplete)
             return _unsettled(rule, snapshot, found, attempts, kernel,
                               domain, store,
                               "n/a: snapshot incomplete, no verdict attempted")
         else:
-            result = attempt("holds", positive, term)
+            result = witness_check = attempt("holds", positive, term)
             attempts.append(result)
             if result.accepted:
                 verdict = holds
@@ -468,16 +567,8 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
     if verdict is None:
         verdict = "ERROR"               # settled neither way; never recorded
 
-    if verdict == "ERROR":
-        differential = "n/a: no verdict"
-    elif found and not witness_accepted:
-        differential = (f"DISAGREE: the search's witness was rejected by the "
-                        f"kernel; the kernel proved {verdict}")
-    elif not found and verdict == holds:
-        differential = (f"DISAGREE: the search found nothing; the kernel "
-                        f"proved {verdict}")
-    else:
-        differential = "agree"
+    differential = _differential(verdict, holds, found, witness_accepted,
+                                 witness_check, attempts)
 
     accepted = [a for a in attempts if a.accepted]
     certificate = Certificate(
@@ -688,7 +779,97 @@ def sync(store, domain: Domain):
         handle.write(rulec.compile_lean(rule, model,
                                         domain.lean.rules_namespace,
                                         domain.lean.schema_namespace))
+
+    # 4. say so now if impact analysis has a blind spot. A collection no
+    # anchor covers is one where a fact ADDED later can never flag an
+    # earlier decision, and nothing else would ever mention it. An explicit
+    # `scope_anchors = ()` is the domain saying that absence is deliberate.
+    if getattr(domain, "scope_anchors", None) != ():
+        blind = unanchored(model, domain, rule)
+        if blind:
+            warnings.warn(
+                f"rule {rule['id']}: no affected_decisions anchor covers "
+                f"{', '.join(blind)}, so a fact added to "
+                f"{'it' if len(blind) == 1 else 'them'} later will not flag "
+                f"an earlier decision. Declare an anchor on the domain, or "
+                f"`scope_anchors = ()` if that is deliberate.",
+                stacklevel=2)
     return rule, model
+
+
+def anchors(model, domain, rule=None) -> tuple[str, ...]:
+    """The `affected_decisions` anchors for `domain`: its own, then the
+    ones its rule implies (`rulec.scope_anchors`) that it did not write.
+
+    `model` is the schema model (`typebridge.parse` of the live type schema)
+    — the anchors depend on which fields are roles. Pass the result to
+    `affected_decisions` in place of `domain.scope_anchors`.
+    """
+    rule = rule or rulec.load(domain.rule_path)
+    own = tuple(getattr(domain, "scope_anchors", ()) or ())
+    have = {rulec.anchor_key(a) for a in own} - {None}
+    return own + tuple(a for a in rulec.scope_anchors(rule, model)
+                       if rulec.anchor_key(a) not in have)
+
+
+def usable_anchors(model, patterns, covered_types=None):
+    """The (type, role) keys of the anchors that could actually fire.
+
+    An anchor fires by joining its role's player to a `coverage` edge, so it
+    is inert unless the domain's export records that player as a covered
+    item. With `covered_types` left out this is just "the anchor parses",
+    which is what made a type-counting check report coverage for an anchor
+    that could never match.
+    """
+    keys = [k for k in map(rulec.anchor_key, patterns) if k]
+    if covered_types is None:
+        return keys
+
+    def recorded(tname):
+        """Is this type, or one it inherits from, recorded as covered? A
+        domain may record a parent (`substance`) where the anchor binds a
+        child (`drug`); the coverage edge is on the same instance either
+        way."""
+        seen = set()
+        while tname and tname not in seen:
+            if tname in covered_types:
+                return True
+            seen.add(tname)
+            tname = model["types"].get(tname, {}).get("sub")
+        return False
+
+    return [k for k in keys
+            if recorded(typebridge.role_player(model, k[0], k[1]))]
+
+
+def unanchored(model, domain, rule=None, covered_types=None) -> list[str]:
+    """Relation types the rule reads that no USABLE anchor is about.
+
+    Without `covered_types` this proves only that an anchor exists, which
+    is weaker than it sounds. An anchor fires by joining its role's player
+    to a `coverage` edge, so it is inert unless the domain's export records
+    that player as a covered item. A rule may read a relation through a
+    role whose player the export never records — a reference edge joined
+    on its far end, say — and then the anchor can never match, while a
+    check counting anchors by type calls the collection covered.
+
+    Pass `covered_types` — the entity types the export records in
+    `Snapshot.scope` — and an anchor counts only if its role's player is
+    among them. The returned list is then the collections where a fact
+    added later really would go unflagged.
+    """
+    rule = rule or rulec.load(domain.rule_path)
+    patterns = anchors(model, domain, rule)
+    keys = usable_anchors(model, patterns, covered_types)
+    covered = {k[0] for k in keys}
+    # a hand-written pattern of some other shape still counts for the type
+    # it names: its join is not ours to second-guess
+    covered |= {c["type"] for c in rule["collections"]
+                if any(f"isa {c['type']}," in p for p in patterns)
+                and rulec.anchor_key(
+                    next(p for p in patterns
+                         if f"isa {c['type']}," in p)) is None}
+    return sorted({c["type"] for c in rule["collections"]} - covered)
 
 
 def publish(store, domain: Domain, recorded_at: str) -> dict[str, str]:
@@ -887,14 +1068,16 @@ def recheck(store, decision_id: str, *, domain, lean_dir=None,
     # the real cause is a schema that moved. Rendered from the live schema
     # and then held to the stored artifact, so a drifted schema is reported
     # as itself.
-    expected_types, model, _live = typebridge.render(
-        store, domain.lean.schema_namespace)
-    if stored_schema_types is not None and stored_schema_types != expected_types:
-        return Recheck(did, decision["v"], False,
-                       "the live TypeDB schema no longer renders to the Lean "
-                       "types this decision cites, so its case file cannot "
-                       "be regenerated faithfully", artifacts,
-                       snapshot_matches=True)
+    if stored_schema_types is not None:
+        ok, model, why = typebridge.types_match(
+            store, stored_schema_types, domain.lean.schema_namespace)
+        if not ok:
+            return Recheck(did, decision["v"], False,
+                           f"{why}, so its case file cannot be regenerated "
+                           f"faithfully", artifacts, snapshot_matches=True)
+    else:
+        model = typebridge.parse(
+            store.driver.databases.get(store.database).type_schema())
     # The stored Lean rule is what the stored RULE TEXT compiles to. Nothing
     # checked this: the two were published as separate artifacts and each
     # was only held to its own hash, so a rule module that did not come from
@@ -908,21 +1091,16 @@ def recheck(store, decision_id: str, *, domain, lean_dir=None,
                            "the stored Lean rule module is not what the "
                            "stored rule source compiles to", artifacts,
                            snapshot_matches=True)
-    namespace = f"Case_{snapshot.sha256[:12]}"
-    rule_module = rulec.module(rule, domain.lean.rules_namespace)
-    conclusion = rule["conclusion"]
-    binding = (f"example : ({conclusion} snap) ↔ "
-               f"({rule_module}.{conclusion} snap) := Iff.rfl\n")
+    # the same builder `decide` used, so "regenerate" cannot drift from
+    # "generate" (see CaseFile)
     try:
-        defs = lean_snapshot(snapshot, model, rule)
+        case = case_file(snapshot, model, rule, domain.lean)
     except Exception as exc:                                  # noqa: BLE001
         return Recheck(did, decision["v"], False,
                        f"the snapshot does not render as Lean: "
                        f"{type(exc).__name__}: {str(exc)[:200]}", artifacts)
-    regenerated = case_source(
-        namespace, (rule_module, *domain.lean.theorem_modules),
-        (domain.lean.schema_namespace, rule_module), defs + binding,
-        proof["n"], proof["st"], proof["t"])
+    namespace = case.namespace
+    regenerated = case.source(proof["n"], proof["st"], proof["t"])
     if regenerated != proof["src"]:
         return Recheck(did, decision["v"], False,
                        "the stored case file is not what this snapshot and "

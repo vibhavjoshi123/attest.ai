@@ -575,6 +575,35 @@ class OutOfSync(Exception):
     pass
 
 
+def types_match(store, stored, namespace, db=None):
+    """Do the LIVE schema's types still render to `stored`?
+
+    The question `recheck` has to ask is about types, not about the whole
+    schema. `render` embeds a hash of `d.schema()`, which covers types AND
+    functions, so comparing whole files answered a different question: one
+    extra deployed function changed two lines and nothing else. Since `sync`
+    deploys a function per rule, and the function's name carries the rule's
+    hash, editing or adding ANY rule made every earlier decision report that
+    the schema it cites no longer renders — re-verification broken by an
+    unrelated change. The examples never saw it because they sync every rule
+    before deciding anything.
+
+    So the stored file's own hash line is reused for the comparison, which
+    isolates the types: a difference now means the types really did move.
+    Returns (ok, model, why).
+    """
+    d = store.driver.databases.get(db or store.database)
+    model = parse(d.type_schema())
+    m = re.search(r'def schemaSha256 : String := "([0-9a-f]{64})"', stored)
+    if not m:
+        return False, model, "the stored types artifact carries no schema hash"
+    as_stored = _render(model, m.group(1), namespace)
+    if as_stored == stored:
+        return True, model, None
+    return False, model, ("the live schema's types no longer render to the "
+                          "Lean types this decision cites")
+
+
 def check_sync(store, schema_lean, sources, namespace, db=None):
     """The Lean types on disk are EXACTLY what the live schema renders to, and
     every source in use is published in TypeDB. Returns the artifact ids to
