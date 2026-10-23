@@ -463,6 +463,23 @@ class Ingest:
         # ledger — and in the second case the first write would have no mark
         # to check against and could be backdated under every fact already
         # there. Fall back to the facts, once.
+        return self.last_fact()
+
+    def last_fact(self) -> str | None:
+        """The latest time an actual FACT was stamped, server-side.
+
+        Distinct from the high-water mark, which `seal_window` also moves
+        when a decision closes its as-of window. Conflating the two is what
+        let one machine's clock stall every writer: a decider whose clock ran
+        fast sealed the mark ahead, and every other writer — with a correct
+        clock — was then "backdating". A seal moves no fact's `recorded-at`,
+        so the question "is this write going behind a fact that already
+        exists?" has to be asked of the facts.
+
+        Two reduce queries, run only on the path where the clock is at or
+        behind the mark. An earlier version of `high_water` ran them on
+        EVERY write, which is why the ledger row exists at all.
+        """
         existing = [
             row["m"] for query in (
                 "match $f isa fact, has recorded-at $t; reduce $m = max($t);",
@@ -521,10 +538,6 @@ class Ingest:
 
     #: one microsecond, as a fraction of a second
     TICK = datetime.timedelta(microseconds=1)
-    #: how far behind the mark a clock may be and still be treated as skew
-    #: rather than as a wrong clock. Generous against real skew, tight
-    #: enough that a backdate of hours is still refused.
-    SKEW_TOLERANCE = datetime.timedelta(minutes=5)
 
     def now(self) -> str:
         """The next ledger time: strictly later than the current mark.
@@ -542,28 +555,28 @@ class Ingest:
         if mark is None:
             return stamp
         if instant(stamp) <= instant(mark):
-            # Behind the mark. Two very different causes, and they need
-            # different answers:
+            # At or behind the mark. The mark is not the right thing to
+            # judge against, because `seal_window` also moves it when a
+            # decision closes its as-of window — so judging against it made
+            # a fast decider's clock everyone's problem, and a tolerance
+            # constant only narrowed the window in which that happened.
             #
-            #   a clock a little behind the mark — ordinary skew, or a mark
-            #   that a decision moved ahead by sealing its as-of window —
-            #   is stepped past, exactly as a same-second collision already
-            #   was. Refusing here made one machine's skew everyone's
-            #   problem: a decider whose clock ran two minutes fast sealed
-            #   the mark two minutes ahead, and every other writer, with a
-            #   correct clock, was refused as "backdating" until real time
-            #   caught up. Stepping past also protects replay better than
-            #   refusing does — the fact lands AFTER the sealed window
-            #   instead of not landing at all.
-            #
-            #   a clock far behind the mark is not skew. It is a broken
-            #   clock or a deliberate backdate, and silently restamping it
-            #   would hide that, so it is still refused.
-            behind = instant(mark) - instant(stamp)
-            if behind > self.SKEW_TOLERANCE:
+            # Backdating means going behind a fact that already exists, so
+            # that is what is checked. A write at or after the last real
+            # fact is always allowed and simply steps past the mark, which
+            # is also what keeps it out of any sealed window.
+            last = self.last_fact()
+            # Compared at the precision the CLOCK reports. A clock that
+            # returns whole seconds, writing twice inside one second, sees a
+            # last-fact of `…:00.000001` — the first write having stepped
+            # past the mark — and `…:00` is not behind that, it is the same
+            # instant as far as this clock can tell. A strict comparison
+            # refused every second write from such a clock.
+            if (last is not None and instant(stamp) < instant(last)
+                    and not last.startswith(stamp)):
                 raise ValueError(
-                    f"ledger time {stamp} is {behind} before high-water mark "
-                    f"{mark}: backdating refused")
+                    f"ledger time {stamp} is before the last recorded fact "
+                    f"{last}: backdating refused")
             stamp = self._after(mark)
         return stamp
 

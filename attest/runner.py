@@ -33,8 +33,8 @@ from typing import Any
 from . import rulec, typebridge
 from .domain import Domain, Snapshot
 from .kernel import Check, Kernel, case_source
-from .store import (VerificationError, dt, ident, instant, seal_window,
-                    _trim)
+from .store import (UnknownSubject, VerificationError, dt, ident, instant,
+                    seal_window, _trim)
 
 def verdicts(rule) -> tuple[str, str]:
     """What to call the two outcomes.
@@ -489,9 +489,35 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
     # refused for drift, out-of-sync types or a bad parameter had already
     # moved it for everyone. Everything that can refuse this decision
     # without touching the snapshot has now run.
+    # The subject is checked BEFORE the window is closed. Every export
+    # refuses an unknown subject (`store.require`), but it does so part-way
+    # through building the snapshot — after the seal — so a decision about a
+    # subject that does not exist still moved shared ledger state.
+    if not store.rows(f'match $s isa {ident(domain.subject_type)},'
+                      f' has {ident(domain.subject_key)}'
+                      f' "{ident(subject)}"; select $s;'):
+        raise UnknownSubject(
+            f"no {domain.subject_type} {subject!r}: refusing to treat an "
+            f"unknown subject as an empty (and therefore decidable) case")
     seal_window(store, as_of)
     snapshot = (domain.snapshot(store, subject, as_of, params=given)
                 if declared else domain.snapshot(store, subject, as_of))
+    # Whether impact analysis could actually see a later addition to each
+    # collection. `sync` can only check that an anchor EXISTS; here the
+    # snapshot names the items the export records as covered, so an anchor
+    # that binds a player the export never records shows up as the blind
+    # spot it is.
+    if getattr(domain, "scope_anchors", None) != ():
+        inert = unanchored(model, domain, rule,
+                           covered_types={t for t, _k, _v in snapshot.scope})
+        if inert:
+            warnings.warn(
+                f"rule {rule['id']}: this decision records no covered item "
+                f"an anchor on {', '.join(inert)} could join to, so a fact "
+                f"added to {'it' if len(inert) == 1 else 'them'} later will "
+                f"not flag this decision. Record the anchored entity in the "
+                f"snapshot's scope, or declare `scope_anchors = ()`.",
+                stacklevel=2)
     if dict(snapshot.params) != {k: str(v) for k, v in given.items()}:
         raise VerificationError(
             f"the export returned a snapshot for parameters "
@@ -862,13 +888,16 @@ def unanchored(model, domain, rule=None, covered_types=None) -> list[str]:
     patterns = anchors(model, domain, rule)
     keys = usable_anchors(model, patterns, covered_types)
     covered = {k[0] for k in keys}
-    # a hand-written pattern of some other shape still counts for the type
-    # it names: its join is not ours to second-guess
+    # A hand-written pattern of some other shape still counts for the type
+    # it names: its join is not ours to second-guess. Tested over ALL the
+    # patterns naming that type, not just the first one found — `next(...)`
+    # made the answer depend on the order the domain happened to list its
+    # anchors in, so the same domain could read covered or uncovered after
+    # a harmless reordering.
     covered |= {c["type"] for c in rule["collections"]
-                if any(f"isa {c['type']}," in p for p in patterns)
-                and rulec.anchor_key(
-                    next(p for p in patterns
-                         if f"isa {c['type']}," in p)) is None}
+                if any(f"isa {c['type']}," in p
+                       and rulec.anchor_key(p) is None
+                       for p in patterns)}
     return sorted({c["type"] for c in rule["collections"]} - covered)
 
 
@@ -921,7 +950,11 @@ class Recheck:
     def as_dict(self) -> dict[str, Any]:
         return {"decision_id": self.decision_id, "verdict": self.verdict,
                 "passed": self.passed, "reason": self.reason,
-                "artifacts": self.artifacts, "workspace": self.workspace,
+                # `workspace` is deliberately absent: it is a temp
+                # directory that changes every run, and it was being
+                # serialised into committed example output, where it showed
+                # up as a diff on every single run.
+                "artifacts": self.artifacts,
                 "snapshot_matches": self.snapshot_matches,
                 "file_matches": self.file_matches,
                 "kernel_recorded": self.kernel_recorded,

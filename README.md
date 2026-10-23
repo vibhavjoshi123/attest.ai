@@ -164,13 +164,14 @@ What each call does:
   decision's date if it is behind, so no later write can be stamped inside a
   snapshot that has already been certified — then takes the snapshot, asks
   TypeDB to search, and has Lean check the result. The window is closed
-  immediately before the snapshot is read, not on entry: the ledger is
-  shared, and a decision refused for rule drift or a bad parameter should
-  not have moved it for everybody. A writer whose clock then sits behind
-  that mark by less than `Ingest.SKEW_TOLERANCE` is stamped just past it
-  rather than refused, so one machine's clock skew cannot stall the
-  others; a clock further behind is treated as wrong, not skewed, and is
-  still refused. `Certificate.decided_by` says how the verdict was reached:
+  immediately before the snapshot is read, and after the subject is known
+  to exist: the ledger is shared, and a decision refused for rule drift, a
+  bad parameter or an unknown subject should not have moved it for
+  everybody. A writer whose clock then sits behind that mark is stamped
+  just past it rather than refused, so one machine's clock cannot stall the
+  others — backdating is judged against the last recorded **fact**, which a
+  sealed window does not move, so going behind a fact that already exists
+  is still refused at any distance and no tolerance has to be tuned. `Certificate.decided_by` says how the verdict was reached:
   `witness` (TypeDB proposed facts and the kernel verified them),
   `negation` (the kernel decided the rule does **not** hold, over the whole
   snapshot), or `evaluation` (the kernel decided it without the search).
