@@ -1,0 +1,10 @@
+# A walk to a NAMED entity: the literal is compared on the reached entity's key.
+rule fixture.in-group v0.1
+says "The holder has a claim whose code falls under the watched group."
+subject holder
+collection claims : claim    for subject via holder
+collection groups : code-isa
+closure in-group over groups from child to parent
+conclude InGroup when
+  some claim c in claims
+  require c.code in-group watched

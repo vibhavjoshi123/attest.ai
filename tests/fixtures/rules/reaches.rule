@@ -1,0 +1,13 @@
+# A closure over a SCOPED collection, and a parameter-scoped collection.
+rule fixture.reaches v0.1
+says "The goal node is reachable from the holder's start node over edges the holder has opened."
+subject holder
+parameter goal : node
+collection starts : start-node for subject via holder
+collection goals  : goal-mark  for goal via node
+collection edges  : open-edge  for subject via holder
+closure reach over edges from origin to target
+conclude Reaches when
+  some start-node a in starts
+  some goal-mark g in goals
+  require a.node reach g.node

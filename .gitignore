@@ -6,3 +6,4 @@ venv/
 *.olean
 .DS_Store
 .env
+tests/fixtures/lean/Cases/

@@ -1,0 +1,8 @@
+# expect: compiled forms use themselves
+rule demo.under v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement e_note in readings
+  require e_note.reading >= 70

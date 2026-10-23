@@ -1,0 +1,19 @@
+# A time window against as-of-day, integer ordering, and a `none of` block
+# reading an outer binder.
+rule fixture.latest-high v0.1
+says "The holder's most recent alpha reading in the last 180 days is at least 70."
+subject holder
+collection readings : reading for subject via holder
+conclude LatestHigh when
+  some reading r in readings
+  require r.test-code = alpha
+  require r.amount >= 70
+  require r.taken-day >= as-of-day - 180
+  require r.taken-day <= as-of-day
+  none of
+    some reading n in readings
+    require n.test-code = alpha
+    require n.fact-id != r.fact-id
+    require n.taken-day >= r.taken-day
+    require n.taken-day <= as-of-day
+    require n.amount != r.amount

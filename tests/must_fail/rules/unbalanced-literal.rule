@@ -1,0 +1,8 @@
+# expect: single balanced literal
+rule demo.lit v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.source = "ICD"x"

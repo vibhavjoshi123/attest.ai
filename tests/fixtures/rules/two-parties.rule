@@ -1,0 +1,9 @@
+# Two binders over one collection, and an inequality between roles.
+rule fixture.two-parties v0.1
+says "The holder is engaged with at least two different counterparties."
+subject holder
+collection engagements : engagement for subject via holder
+conclude TwoParties when
+  some engagement a in engagements
+  some engagement b in engagements
+  require a.counterparty != b.counterparty

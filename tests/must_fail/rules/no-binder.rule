@@ -1,0 +1,8 @@
+# expect: at least one `some`
+rule demo.empty v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  none of
+    some measurement m in readings

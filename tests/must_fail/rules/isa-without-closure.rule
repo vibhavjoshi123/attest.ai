@@ -1,0 +1,8 @@
+# expect: no closure declared
+rule demo.isa v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.of is-a m.of

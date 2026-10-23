@@ -1,0 +1,1530 @@
+{
+ "tests/fixtures/rules/any-listing.rule": {
+  "cases": [
+   {
+    "data": {
+     "listings": [
+      {
+       "fact-id": "f001",
+       "party": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "lifted"
+      },
+      {
+       "fact-id": "f002",
+       "party": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "lifted"
+      },
+      {
+       "fact-id": "f003",
+       "party": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      }
+     ]
+    },
+    "proof": "\u27e8{ party := \"k2\", factId := \"f003\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", status := .active },\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f003"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 0,
+    "size": 4,
+    "witness": [
+     "f003"
+    ]
+   },
+   {
+    "data": {
+     "listings": [
+      {
+       "fact-id": "f001",
+       "party": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      }
+     ]
+    },
+    "proof": "\u27e8{ party := \"k3\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", status := .active },\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 1,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   },
+   {
+    "data": {
+     "listings": [
+      {
+       "fact-id": "f001",
+       "party": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      },
+      {
+       "fact-id": "f002",
+       "party": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      },
+      {
+       "fact-id": "f003",
+       "party": "active",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      },
+      {
+       "fact-id": "f004",
+       "party": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      }
+     ]
+    },
+    "proof": "\u27e8{ party := \"k1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", status := .active },\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 5,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_any_listing_anylisting_witness_2aae745aa675",
+   {}
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.any-listing by attest/rulec.py. Do not edit.\n  rule fixture.any-listing v0.1\n  At least one listing is active.\n  rule source sha256: 2aae745aa675952973ee8101c9414d23b5a08f30414048da5d01b102bc17c1e7\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.AnyListing\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.any-listing v0.1\"\ndef ruleSha256 : String := \"2aae745aa675952973ee8101c9414d23b5a08f30414048da5d01b102bc17c1e7\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  listings : List Listing\nderiving Repr\n\n/-- At least one listing is active. -/\ndef AnyListing (s : Snapshot) : Prop :=\n  \u2203 l \u2208 s.listings,\n    l.retractedAt = none \u2227\n    l.status = .active\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (AnyListing s) := by\n  unfold AnyListing; infer_instance\n\nend Fixture.Rules.Fixture.AnyListing\n",
+  "shape": "AnyListing(some(v0:listing/-),req(v0.status=lit(active)))",
+  "shape_sha": "963fa2a070a6076783ae5828f41cc7867348b1781470cb7c0e3f2349b6c29ec5",
+  "typeql": "define\nfun fixture_any_listing_anylisting_witness_2aae745aa675($subject: holder, $t: datetime) -> { fact-id }:\nmatch\n  $subject isa holder;\n  $l isa listing; $l has recorded-at $l_ra; $l_ra <= $t; not { $l has retracted-at $l_rx; $l_rx <= $t; };\n  $l has fact-id $l_fid;\n  $l has status $l_status;\n  $l_status == \"active\";\nreturn { $l_fid };\n",
+  "uses_as_of": false
+ },
+ "tests/fixtures/rules/blocked.rule": {
+  "cases": [
+   {
+    "data": {
+     "engagements": [
+      {
+       "counterparty": "k1",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "active",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "k2",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "active",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "s2",
+       "fact-id": "f004",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "x",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "listings": [
+      {
+       "fact-id": "f008",
+       "party": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      },
+      {
+       "fact-id": "f009",
+       "party": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "lifted"
+      },
+      {
+       "fact-id": "f010",
+       "party": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      }
+     ],
+     "ownerships": [
+      {
+       "fact-id": "f005",
+       "owned": "k3",
+       "owner": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f006",
+       "owned": "s1",
+       "owner": "active",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f007",
+       "owned": "k1",
+       "owner": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ counterparty := \"k1\", holder := \"s1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", ref := \"y\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { party := \"s2\", factId := \"f008\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", status := .active },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f007",
+     "f008"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 5,
+    "size": 4,
+    "witness": [
+     "f001",
+     "f008"
+    ]
+   },
+   {
+    "data": {
+     "engagements": [
+      {
+       "counterparty": "s2",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "active",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "k3",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "listings": [
+      {
+       "fact-id": "f007",
+       "party": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "lifted"
+      },
+      {
+       "fact-id": "f008",
+       "party": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      },
+      {
+       "fact-id": "f009",
+       "party": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "lifted"
+      },
+      {
+       "fact-id": "f010",
+       "party": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      }
+     ],
+     "ownerships": [
+      {
+       "fact-id": "f003",
+       "owned": "s2",
+       "owner": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f004",
+       "owned": "k2",
+       "owner": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f005",
+       "owned": "k3",
+       "owner": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f006",
+       "owned": "k3",
+       "owner": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ counterparty := \"s2\", holder := \"s1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", ref := \"active\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { party := \"s1\", factId := \"f008\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", status := .active },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f003",
+     "f008"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 7,
+    "size": 4,
+    "witness": [
+     "f001",
+     "f008"
+    ]
+   },
+   {
+    "data": {
+     "engagements": [
+      {
+       "counterparty": "k3",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "active",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "active",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "k3",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "listings": [
+      {
+       "fact-id": "f004",
+       "party": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "lifted"
+      },
+      {
+       "fact-id": "f005",
+       "party": "active",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      },
+      {
+       "fact-id": "f006",
+       "party": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "status": "active"
+      }
+     ],
+     "ownerships": []
+    },
+    "proof": "\u27e8{ counterparty := \"active\", holder := \"s1\", factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", ref := \"y\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { party := \"active\", factId := \"f005\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", status := .active },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f002",
+     "f005"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 9,
+    "size": 4,
+    "witness": [
+     "f002",
+     "f005"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_blocked_blocked_witness_afbc9c4b4485",
+   {
+    "owned-by": "fixture_blocked_owned_by_afbc9c4b4485"
+   }
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.blocked by attest/rulec.py. Do not edit.\n  rule fixture.blocked v0.1\n  A holder is BLOCKED if it is engaged with a firm that has an active listing itself, or is owned, directly or through a chain of owners, by a party that does.\n  rule source sha256: afbc9c4b4485529a641936ed5f11e49ec20144623bedda13d5a2f35672936bc8\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.Blocked\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.blocked v0.1\"\ndef ruleSha256 : String := \"afbc9c4b4485529a641936ed5f11e49ec20144623bedda13d5a2f35672936bc8\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  engagements : List Engagement\n  ownerships : List Ownership\n  listings : List Listing\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\nderiving Repr\n\n/-- closure `owned-by` over `ownerships`, owned \u2192 owner: one round.\n\n    A retracted edge is not walked. The TypeQL closure has\n    always guarded this (`active($e)` on every edge); the Lean\n    fold did not, because the guards were added to `some`\n    binders and closure collections were left out. The two\n    forms then asked different questions, and the dangerous\n    direction is a walking step inside `none of`: Lean reaches\n    the goal through a retracted edge, the block is false, the\n    kernel decides the negation, and the search also returns\n    nothing \u2014 so the per-case differential reports `agree` and\n    the verdict is recorded. -/\ndef ownedByStep (edges : List Ownership) (xs : List String) : List String :=\n  (xs ++ (edges.filter (fun e => e.retractedAt.isNone && xs.contains e.owned)).map (\u00b7.owner)).eraseDups\n\n/-- `x` itself and everything it reaches; `edges.length + 1` rounds reach the\n    fixpoint on any finite graph, cycles included. -/\ndef ownedBy (s : Snapshot) (x : String) : List String :=\n  (List.range (s.ownerships.length + 1)).foldl (fun xs _ => ownedByStep s.ownerships xs) [x]\n\n/-- A holder is BLOCKED if it is engaged with a firm that has an active listing itself, or is owned, directly or through a chain of owners, by a party that does. -/\ndef Blocked (s : Snapshot) : Prop :=\n  \u2203 e \u2208 s.engagements,\n    e.holder = s.subject \u2227\n    e.retractedAt = none \u2227\n    \u2203 l \u2208 s.listings,\n    l.retractedAt = none \u2227\n    l.party \u2208 ownedBy s e.counterparty \u2227\n    l.status = .active\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (Blocked s) := by\n  unfold Blocked; infer_instance\n\nend Fixture.Rules.Fixture.Blocked\n",
+  "shape": "Blocked(some(v0:engagement/holder),some(v1:listing/-),req(v0.counterpartywalk<ownership/-:owned>owner>v1.party),req(v1.status=lit(active)))",
+  "shape_sha": "d54ac41251d2b0e22cd80c6ebe05408896762981c2283c624029e32b30d6c39f",
+  "typeql": "define\nfun fixture_blocked_owned_by_afbc9c4b4485($x: firm, $t: datetime) -> { firm }:\nmatch\n  { $y isa firm; $y is $x; } or\n  { let $m in fixture_blocked_owned_by_afbc9c4b4485($x, $t);\n    $e isa ownership, links (owned: $m, owner: $y); $e has recorded-at $e_ra; $e_ra <= $t; not { $e has retracted-at $e_rx; $e_rx <= $t; }; };\nreturn { $y };\n\nfun fixture_blocked_blocked_witness_afbc9c4b4485($subject: holder, $t: datetime) -> { fact-id, fact-id }:\nmatch\n  $e isa engagement, links (holder: $subject); $e has recorded-at $e_ra; $e_ra <= $t; not { $e has retracted-at $e_rx; $e_rx <= $t; };\n  $e has fact-id $e_fid;\n  $l isa listing; $l has recorded-at $l_ra; $l_ra <= $t; not { $l has retracted-at $l_rx; $l_rx <= $t; };\n  $l has fact-id $l_fid;\n  $e links (counterparty: $e_counterparty);\n  let $c1 in fixture_blocked_owned_by_afbc9c4b4485($e_counterparty, $t);\n  $l links (party: $l_party);\n  $c1 is $l_party;\n  $l has status $l_status;\n  $l_status == \"active\";\nreturn { $e_fid, $l_fid };\n",
+  "uses_as_of": false
+ },
+ "tests/fixtures/rules/complete.rule": {
+  "cases": [
+   {
+    "data": {
+     "crits": [],
+     "marks": [
+      {
+       "fact-id": "f001",
+       "item": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f002",
+       "item": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f003",
+       "item": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f004",
+       "item": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "resols": [
+      {
+       "crit-key": "met",
+       "fact-id": "f005",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "unmet"
+      },
+      {
+       "crit-key": "met",
+       "fact-id": "f006",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "met"
+      },
+      {
+       "crit-key": "met",
+       "fact-id": "f007",
+       "holder": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "unknown"
+      }
+     ]
+    },
+    "proof": "\u27e8{ item := \"k1\", factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f002",
+     "f005",
+     "f006",
+     "f007"
+    ],
+    "scopes": {
+     "subject": "s1",
+     "target": "k1"
+    },
+    "seed": 1,
+    "size": 4,
+    "witness": [
+     "f002"
+    ]
+   },
+   {
+    "data": {
+     "crits": [
+      {
+       "crit-key": "y",
+       "fact-id": "f005",
+       "item": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "marks": [
+      {
+       "fact-id": "f001",
+       "item": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f002",
+       "item": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f003",
+       "item": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f004",
+       "item": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "resols": [
+      {
+       "crit-key": "y",
+       "fact-id": "f006",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "met"
+      },
+      {
+       "crit-key": "y",
+       "fact-id": "f007",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "met"
+      },
+      {
+       "crit-key": "met",
+       "fact-id": "f008",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "unknown"
+      },
+      {
+       "crit-key": "met",
+       "fact-id": "f009",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "unmet"
+      }
+     ]
+    },
+    "proof": "\u27e8{ item := \"k1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f006",
+     "f007",
+     "f008",
+     "f009"
+    ],
+    "scopes": {
+     "subject": "s1",
+     "target": "k1"
+    },
+    "seed": 3,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   },
+   {
+    "data": {
+     "crits": [],
+     "marks": [
+      {
+       "fact-id": "f001",
+       "item": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f002",
+       "item": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "resols": [
+      {
+       "crit-key": "met",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "met"
+      },
+      {
+       "crit-key": "x",
+       "fact-id": "f004",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "unmet"
+      },
+      {
+       "crit-key": "y",
+       "fact-id": "f005",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "state": "unknown"
+      }
+     ]
+    },
+    "proof": "\u27e8{ item := \"k2\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f003",
+     "f004",
+     "f005"
+    ],
+    "scopes": {
+     "subject": "s1",
+     "target": "k2"
+    },
+    "seed": 5,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   }
+  ],
+  "double_negated": [
+   "resols"
+  ],
+  "fn_names": [
+   "fixture_complete_complete_witness_791e143cf13b",
+   {}
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.complete by attest/rulec.py. Do not edit.\n  rule fixture.complete v0.1\n  The item is complete for the holder when every criterion of the item has a met resolution for the holder.\n  rule source sha256: 791e143cf13ba4073c4e642f42f16e59498b0e5f4f526f6aa9bc7254f9964b42\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.Complete\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.complete v0.1\"\ndef ruleSha256 : String := \"791e143cf13ba4073c4e642f42f16e59498b0e5f4f526f6aa9bc7254f9964b42\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  marks : List ItemMark\n  crits : List Criterion\n  resols : List Resolution\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\n  /-- input `target`: the key of the item decided about -/\n  target : String\nderiving Repr\n\n/-- The item is complete for the holder when every criterion of the item has a met resolution for the holder. -/\ndef Complete (s : Snapshot) : Prop :=\n  \u2203 m \u2208 s.marks,\n    m.item = s.target \u2227\n    m.retractedAt = none \u2227\n    \u00ac (\u2203 c \u2208 s.crits,\n      c.item = s.target \u2227\n      c.retractedAt = none \u2227\n      \u00ac (\u2203 v \u2208 s.resols,\n        v.holder = s.subject \u2227\n        v.retractedAt = none \u2227\n        v.critKey = c.critKey \u2227\n        v.state = .met))\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (Complete s) := by\n  unfold Complete; infer_instance\n\nend Fixture.Rules.Fixture.Complete\n",
+  "shape": "Complete[item](some(v0:item-mark/item@target),none[some(v1:criterion/item@target),none[some(v2:resolution/holder),req(v2.crit-key=v1.crit-key),req(v2.state=lit(met))]])",
+  "shape_sha": "8c51ef42a648cb22245be65b81c40f25bc2e651a4bbbad36edf2593b666573ae",
+  "typeql": "define\nfun fixture_complete_complete_witness_791e143cf13b($subject: holder, $arg0: item, $t: datetime) -> { fact-id }:\nmatch\n  $arg0 isa item;\n  $m isa item-mark, links (item: $arg0); $m has recorded-at $m_ra; $m_ra <= $t; not { $m has retracted-at $m_rx; $m_rx <= $t; };\n  $m has fact-id $m_fid;\n  not {\n    $c isa criterion, links (item: $arg0); $c has recorded-at $c_ra; $c_ra <= $t; not { $c has retracted-at $c_rx; $c_rx <= $t; };\n    $c has crit-key $c_crit_key;\n    not {\n      $v isa resolution, links (holder: $subject); $v has recorded-at $v_ra; $v_ra <= $t; not { $v has retracted-at $v_rx; $v_rx <= $t; };\n      $v has crit-key $v_crit_key;\n      $v_crit_key == $c_crit_key;\n      $v has state $v_state;\n      $v_state == \"met\";\n    };\n  };\nreturn { $m_fid };\n",
+  "uses_as_of": false
+ },
+ "tests/fixtures/rules/in-group.rule": {
+  "cases": [
+   {
+    "data": {
+     "claims": [
+      {
+       "code": "k1",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "watched",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "k2",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "s1",
+       "fact-id": "f004",
+       "holder": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "groups": [
+      {
+       "child": "s2",
+       "fact-id": "f005",
+       "parent": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "child": "k3",
+       "fact-id": "f006",
+       "parent": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "child": "s2",
+       "fact-id": "f007",
+       "parent": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ code := \"watched\", holder := \"s1\", factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f002"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 5,
+    "size": 4,
+    "witness": [
+     "f002"
+    ]
+   },
+   {
+    "data": {
+     "claims": [
+      {
+       "code": "s1",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "s1",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "watched",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "k1",
+       "fact-id": "f004",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "groups": [
+      {
+       "child": "k3",
+       "fact-id": "f005",
+       "parent": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "child": "s2",
+       "fact-id": "f006",
+       "parent": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "child": "watched",
+       "fact-id": "f007",
+       "parent": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ code := \"watched\", holder := \"s1\", factId := \"f003\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f003"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 6,
+    "size": 4,
+    "witness": [
+     "f003"
+    ]
+   },
+   {
+    "data": {
+     "claims": [
+      {
+       "code": "k3",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "watched",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "code": "k3",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "groups": [
+      {
+       "child": "watched",
+       "fact-id": "f004",
+       "parent": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "child": "s2",
+       "fact-id": "f005",
+       "parent": "watched",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "child": "watched",
+       "fact-id": "f006",
+       "parent": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "child": "s2",
+       "fact-id": "f007",
+       "parent": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ code := \"watched\", holder := \"s1\", factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f002"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 9,
+    "size": 4,
+    "witness": [
+     "f002"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_in_group_ingroup_witness_151a34666008",
+   {
+    "in-group": "fixture_in_group_in_group_151a34666008"
+   }
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.in-group by attest/rulec.py. Do not edit.\n  rule fixture.in-group v0.1\n  The holder has a claim whose code falls under the watched group.\n  rule source sha256: 151a346660082bc63fa77d277f5d2fe6b64a5ee58ee4d8f7f27f6a873e04b7bb\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.InGroup\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.in-group v0.1\"\ndef ruleSha256 : String := \"151a346660082bc63fa77d277f5d2fe6b64a5ee58ee4d8f7f27f6a873e04b7bb\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  claims : List Claim\n  groups : List CodeIsa\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\nderiving Repr\n\n/-- closure `in-group` over `groups`, child \u2192 parent: one round.\n\n    A retracted edge is not walked. The TypeQL closure has\n    always guarded this (`active($e)` on every edge); the Lean\n    fold did not, because the guards were added to `some`\n    binders and closure collections were left out. The two\n    forms then asked different questions, and the dangerous\n    direction is a walking step inside `none of`: Lean reaches\n    the goal through a retracted edge, the block is false, the\n    kernel decides the negation, and the search also returns\n    nothing \u2014 so the per-case differential reports `agree` and\n    the verdict is recorded. -/\ndef inGroupStep (edges : List CodeIsa) (xs : List String) : List String :=\n  (xs ++ (edges.filter (fun e => e.retractedAt.isNone && xs.contains e.child)).map (\u00b7.parent)).eraseDups\n\n/-- `x` itself and everything it reaches; `edges.length + 1` rounds reach the\n    fixpoint on any finite graph, cycles included. -/\ndef inGroup (s : Snapshot) (x : String) : List String :=\n  (List.range (s.groups.length + 1)).foldl (fun xs _ => inGroupStep s.groups xs) [x]\n\n/-- The holder has a claim whose code falls under the watched group. -/\ndef InGroup (s : Snapshot) : Prop :=\n  \u2203 c \u2208 s.claims,\n    c.holder = s.subject \u2227\n    c.retractedAt = none \u2227\n    \"watched\" \u2208 inGroup s c.code\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (InGroup s) := by\n  unfold InGroup; infer_instance\n\nend Fixture.Rules.Fixture.InGroup\n",
+  "shape": "InGroup(some(v0:claim/holder),req(v0.codewalk<code-isa/-:child>parent>lit(watched)))",
+  "shape_sha": "f5051729530e03fbc8c192f8376557c2aa4d8653ef51a6b63435d403754279df",
+  "typeql": "define\nfun fixture_in_group_in_group_151a34666008($x: code, $t: datetime) -> { code }:\nmatch\n  { $y isa code; $y is $x; } or\n  { let $m in fixture_in_group_in_group_151a34666008($x, $t);\n    $e isa code-isa, links (child: $m, parent: $y); $e has recorded-at $e_ra; $e_ra <= $t; not { $e has retracted-at $e_rx; $e_rx <= $t; }; };\nreturn { $y };\n\nfun fixture_in_group_ingroup_witness_151a34666008($subject: holder, $t: datetime) -> { fact-id }:\nmatch\n  $c isa claim, links (holder: $subject); $c has recorded-at $c_ra; $c_ra <= $t; not { $c has retracted-at $c_rx; $c_rx <= $t; };\n  $c has fact-id $c_fid;\n  $c links (code: $c_code);\n  let $c1 in fixture_in_group_in_group_151a34666008($c_code, $t);\n  $c1 has code-key $k1;\n  $k1 == \"watched\";\nreturn { $c_fid };\n",
+  "uses_as_of": false
+ },
+ "tests/fixtures/rules/latest-high.rule": {
+  "cases": [
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 19999,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 20001,
+       "test-code": "beta"
+      },
+      {
+       "amount": 19820,
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19821,
+       "test-code": "alpha"
+      },
+      {
+       "amount": 19820,
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 70,
+       "test-code": "beta"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 19820, factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 19821, testCode := .alpha },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f002"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 0,
+    "size": 4,
+    "witness": [
+     "f002"
+    ]
+   },
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 71,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 20000,
+       "test-code": "alpha"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 71, factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 20000, testCode := .alpha },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 3,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   },
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 19820,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 69,
+       "test-code": "beta"
+      },
+      {
+       "amount": 70,
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 69,
+       "test-code": "beta"
+      },
+      {
+       "amount": 20000,
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19999,
+       "test-code": "alpha"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 20000, factId := \"f003\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 19999, testCode := .alpha },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f003"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 9,
+    "size": 4,
+    "witness": [
+     "f003"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_latest_high_latesthigh_witness_7293f879fcfd",
+   {}
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.latest-high by attest/rulec.py. Do not edit.\n  rule fixture.latest-high v0.1\n  The holder's most recent alpha reading in the last 180 days is at least 70.\n  rule source sha256: 7293f879fcfd0d7dc1f19094137f04f431903d3cb3ba487bc42ecadd9a2b3bcc\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.LatestHigh\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.latest-high v0.1\"\ndef ruleSha256 : String := \"7293f879fcfd0d7dc1f19094137f04f431903d3cb3ba487bc42ecadd9a2b3bcc\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  readings : List Reading\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\n  /-- the instant being decided, in whole days -/\n  asOfDay : Int\nderiving Repr\n\n/-- The holder's most recent alpha reading in the last 180 days is at least 70. -/\ndef LatestHigh (s : Snapshot) : Prop :=\n  \u2203 r \u2208 s.readings,\n    r.holder = s.subject \u2227\n    r.retractedAt = none \u2227\n    r.testCode = .alpha \u2227\n    r.amount \u2265 70 \u2227\n    r.takenDay \u2265 (s.asOfDay - 180) \u2227\n    r.takenDay \u2264 s.asOfDay \u2227\n    \u00ac (\u2203 n \u2208 s.readings,\n      n.holder = s.subject \u2227\n      n.retractedAt = none \u2227\n      n.testCode = .alpha \u2227\n      n.factId \u2260 r.factId \u2227\n      n.takenDay \u2265 r.takenDay \u2227\n      n.takenDay \u2264 s.asOfDay \u2227\n      n.amount \u2260 r.amount)\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (LatestHigh s) := by\n  unfold LatestHigh; infer_instance\n\nend Fixture.Rules.Fixture.LatestHigh\n",
+  "shape": "LatestHigh(some(v0:reading/holder),req(v0.test-code=lit(alpha)),req(v0.amount>=lit(70)),req(v0.taken-day>=asof-180),req(v0.taken-day<=asof),none[some(v1:reading/holder),req(v1.test-code=lit(alpha)),req(v1.fact-id!=v0.fact-id),req(v1.taken-day>=v0.taken-day),req(v1.taken-day<=asof),req(v1.amount!=v0.amount)])",
+  "shape_sha": "e145b1650436c3689911a4fccf4904ba4d26bbc88b05780ce1e36537502240a9",
+  "typeql": "define\nfun fixture_latest_high_latesthigh_witness_7293f879fcfd($subject: holder, $t: datetime, $asof_day: integer) -> { fact-id }:\nmatch\n  $r isa reading, links (holder: $subject); $r has recorded-at $r_ra; $r_ra <= $t; not { $r has retracted-at $r_rx; $r_rx <= $t; };\n  $r has fact-id $r_fid;\n  $r has test-code $r_test_code;\n  $r_test_code == \"alpha\";\n  $r has amount $r_amount;\n  $r_amount >= 70;\n  $r has taken-day $r_taken_day;\n  let $d1 = $asof_day - 180;\n  $r_taken_day >= $d1;\n  $r_taken_day <= $asof_day;\n  $r has fact-id $r_fact_id;\n  not {\n    $n isa reading, links (holder: $subject); $n has recorded-at $n_ra; $n_ra <= $t; not { $n has retracted-at $n_rx; $n_rx <= $t; };\n    $n has test-code $n_test_code;\n    $n_test_code == \"alpha\";\n    $n has fact-id $n_fact_id;\n    $n_fact_id != $r_fact_id;\n    $n has taken-day $n_taken_day;\n    $n_taken_day >= $r_taken_day;\n    $n_taken_day <= $asof_day;\n    $n has amount $n_amount;\n    $n_amount != $r_amount;\n  };\nreturn { $r_fid };\n",
+  "uses_as_of": true
+ },
+ "tests/fixtures/rules/reaches.rule": {
+  "cases": [
+   {
+    "data": {
+     "edges": [
+      {
+       "fact-id": "f006",
+       "holder": "s2",
+       "origin": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "target": "s2"
+      },
+      {
+       "fact-id": "f007",
+       "holder": "s1",
+       "origin": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "target": "k2"
+      },
+      {
+       "fact-id": "f008",
+       "holder": "s1",
+       "origin": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "target": "k3"
+      },
+      {
+       "fact-id": "f009",
+       "holder": "s1",
+       "origin": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "target": "k2"
+      }
+     ],
+     "goals": [
+      {
+       "fact-id": "f004",
+       "node": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f005",
+       "node": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "starts": [
+      {
+       "fact-id": "f001",
+       "holder": "s1",
+       "node": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f002",
+       "holder": "s2",
+       "node": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f003",
+       "holder": "s1",
+       "node": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", node := \"k3\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { node := \"k2\", factId := \"f004\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f004",
+     "f009"
+    ],
+    "scopes": {
+     "goal": "k2",
+     "subject": "s1"
+    },
+    "seed": 0,
+    "size": 4,
+    "witness": [
+     "f001",
+     "f004"
+    ]
+   },
+   {
+    "data": {
+     "edges": [],
+     "goals": [
+      {
+       "fact-id": "f005",
+       "node": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f006",
+       "node": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f007",
+       "node": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f008",
+       "node": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "starts": [
+      {
+       "fact-id": "f001",
+       "holder": "s1",
+       "node": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f002",
+       "holder": "s1",
+       "node": "k3",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f003",
+       "holder": "s1",
+       "node": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f004",
+       "holder": "s1",
+       "node": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", node := \"k1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { node := \"k1\", factId := \"f005\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f005"
+    ],
+    "scopes": {
+     "goal": "k1",
+     "subject": "s1"
+    },
+    "seed": 3,
+    "size": 4,
+    "witness": [
+     "f001",
+     "f005"
+    ]
+   },
+   {
+    "data": {
+     "edges": [
+      {
+       "fact-id": "f005",
+       "holder": "s1",
+       "origin": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "target": "k1"
+      },
+      {
+       "fact-id": "f006",
+       "holder": "s2",
+       "origin": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "target": "k1"
+      }
+     ],
+     "goals": [
+      {
+       "fact-id": "f003",
+       "node": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f004",
+       "node": "k1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ],
+     "starts": [
+      {
+       "fact-id": "f001",
+       "holder": "s1",
+       "node": "k2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "fact-id": "f002",
+       "holder": "s1",
+       "node": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", node := \"s1\", factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { node := \"k1\", factId := \"f004\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f002",
+     "f004",
+     "f005"
+    ],
+    "scopes": {
+     "goal": "k1",
+     "subject": "s1"
+    },
+    "seed": 4,
+    "size": 4,
+    "witness": [
+     "f002",
+     "f004"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_reaches_reaches_witness_849d471b636c",
+   {
+    "reach": "fixture_reaches_reach_849d471b636c"
+   }
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.reaches by attest/rulec.py. Do not edit.\n  rule fixture.reaches v0.1\n  The goal node is reachable from the holder's start node over edges the holder has opened.\n  rule source sha256: 849d471b636caef00b1dc283403ee65817d506106192021a942caa140b1b8d06\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.Reaches\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.reaches v0.1\"\ndef ruleSha256 : String := \"849d471b636caef00b1dc283403ee65817d506106192021a942caa140b1b8d06\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  starts : List StartNode\n  goals : List GoalMark\n  edges : List OpenEdge\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\n  /-- input `goal`: the key of the node decided about -/\n  goal : String\nderiving Repr\n\n/-- closure `reach` over `edges` (scoped to `subject`), origin \u2192 target: one round.\n    Only unretracted edges belonging to the scope are walked. -/\ndef reachStep (sc : String) (edges : List OpenEdge) (xs : List String) : List String :=\n  (xs ++ (edges.filter (fun e => e.retractedAt.isNone && e.holder == sc && xs.contains e.origin)).map (\u00b7.target)).eraseDups\n\n/-- `x` itself and everything it reaches within the scope. -/\ndef reach (s : Snapshot) (x : String) : List String :=\n  (List.range (s.edges.length + 1)).foldl (fun xs _ => reachStep s.subject s.edges xs) [x]\n\n/-- The goal node is reachable from the holder's start node over edges the holder has opened. -/\ndef Reaches (s : Snapshot) : Prop :=\n  \u2203 a \u2208 s.starts,\n    a.holder = s.subject \u2227\n    a.retractedAt = none \u2227\n    \u2203 g \u2208 s.goals,\n    g.node = s.goal \u2227\n    g.retractedAt = none \u2227\n    g.node \u2208 reach s a.node\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (Reaches s) := by\n  unfold Reaches; infer_instance\n\nend Fixture.Rules.Fixture.Reaches\n",
+  "shape": "Reaches[node](some(v0:start-node/holder),some(v1:goal-mark/node@goal),req(v0.nodewalk<open-edge/holder:origin>target>v1.node))",
+  "shape_sha": "832f75ac678821cdb71b8113e89fbab954b136798a31b4e93e0ff55ca830310d",
+  "typeql": "define\nfun fixture_reaches_reach_849d471b636c($x: node, $sc: holder, $t: datetime) -> { node }:\nmatch\n  { $y isa node; $y is $x; } or\n  { let $m in fixture_reaches_reach_849d471b636c($x, $sc, $t);\n    $e isa open-edge, links (origin: $m, target: $y, holder: $sc); $e has recorded-at $e_ra; $e_ra <= $t; not { $e has retracted-at $e_rx; $e_rx <= $t; }; };\nreturn { $y };\n\nfun fixture_reaches_reaches_witness_849d471b636c($subject: holder, $arg0: node, $t: datetime) -> { fact-id, fact-id }:\nmatch\n  $arg0 isa node;\n  $a isa start-node, links (holder: $subject); $a has recorded-at $a_ra; $a_ra <= $t; not { $a has retracted-at $a_rx; $a_rx <= $t; };\n  $a has fact-id $a_fid;\n  $g isa goal-mark, links (node: $arg0); $g has recorded-at $g_ra; $g_ra <= $t; not { $g has retracted-at $g_rx; $g_rx <= $t; };\n  $g has fact-id $g_fid;\n  $a links (node: $a_node);\n  let $c1 in fixture_reaches_reach_849d471b636c($a_node, $subject, $t);\n  $g links (node: $g_node);\n  $c1 is $g_node;\nreturn { $a_fid, $g_fid };\n",
+  "uses_as_of": false
+ },
+ "tests/fixtures/rules/two-parties.rule": {
+  "cases": [
+   {
+    "data": {
+     "engagements": [
+      {
+       "counterparty": "k2",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "k1",
+       "fact-id": "f002",
+       "holder": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "s2",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ counterparty := \"k2\", holder := \"s1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", ref := \"y\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { counterparty := \"s2\", holder := \"s1\", factId := \"f003\", recordedAt := \"2026-01-01T00:00:00\", ref := \"y\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f003"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 0,
+    "size": 4,
+    "witness": [
+     "f001",
+     "f003"
+    ]
+   },
+   {
+    "data": {
+     "engagements": [
+      {
+       "counterparty": "k1",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "x",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "s2",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "x",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "k2",
+       "fact-id": "f003",
+       "holder": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "k3",
+       "fact-id": "f004",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "x",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ counterparty := \"k1\", holder := \"s1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", ref := \"x\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { counterparty := \"s2\", holder := \"s1\", factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", ref := \"x\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f002"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 5,
+    "size": 4,
+    "witness": [
+     "f001",
+     "f002"
+    ]
+   },
+   {
+    "data": {
+     "engagements": [
+      {
+       "counterparty": "s1",
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "s2",
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "k1",
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "x",
+       "retracted-at": null,
+       "source": "src"
+      },
+      {
+       "counterparty": "s2",
+       "fact-id": "f004",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "ref": "y",
+       "retracted-at": null,
+       "source": "src"
+      }
+     ]
+    },
+    "proof": "\u27e8{ counterparty := \"s1\", holder := \"s1\", factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", ref := \"y\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   { counterparty := \"s2\", holder := \"s1\", factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", ref := \"y\", retractedAt := none, source := \"src\" },\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001",
+     "f002"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 6,
+    "size": 4,
+    "witness": [
+     "f001",
+     "f002"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_two_parties_twoparties_witness_838972eb4774",
+   {}
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.two-parties by attest/rulec.py. Do not edit.\n  rule fixture.two-parties v0.1\n  The holder is engaged with at least two different counterparties.\n  rule source sha256: 838972eb477416f640696fea532a886696a67e15602f92b5c5be50f053675da8\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.TwoParties\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.two-parties v0.1\"\ndef ruleSha256 : String := \"838972eb477416f640696fea532a886696a67e15602f92b5c5be50f053675da8\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  engagements : List Engagement\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\nderiving Repr\n\n/-- The holder is engaged with at least two different counterparties. -/\ndef TwoParties (s : Snapshot) : Prop :=\n  \u2203 a \u2208 s.engagements,\n    a.holder = s.subject \u2227\n    a.retractedAt = none \u2227\n    \u2203 b \u2208 s.engagements,\n    b.holder = s.subject \u2227\n    b.retractedAt = none \u2227\n    a.counterparty \u2260 b.counterparty\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (TwoParties s) := by\n  unfold TwoParties; infer_instance\n\nend Fixture.Rules.Fixture.TwoParties\n",
+  "shape": "TwoParties(some(v0:engagement/holder),some(v1:engagement/holder),req(v0.counterparty!=v1.counterparty))",
+  "shape_sha": "f3880df2ceef9a874b424a43272f3e3a64f922a490fca61f2868649c5a453405",
+  "typeql": "define\nfun fixture_two_parties_twoparties_witness_838972eb4774($subject: holder, $t: datetime) -> { fact-id, fact-id }:\nmatch\n  $a isa engagement, links (holder: $subject); $a has recorded-at $a_ra; $a_ra <= $t; not { $a has retracted-at $a_rx; $a_rx <= $t; };\n  $a has fact-id $a_fid;\n  $b isa engagement, links (holder: $subject); $b has recorded-at $b_ra; $b_ra <= $t; not { $b has retracted-at $b_rx; $b_rx <= $t; };\n  $b has fact-id $b_fid;\n  $a links (counterparty: $a_counterparty);\n  $b links (counterparty: $b_counterparty);\n  not { $a_counterparty is $b_counterparty; };\nreturn { $a_fid, $b_fid };\n",
+  "uses_as_of": false
+ }
+}

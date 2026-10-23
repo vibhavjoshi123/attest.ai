@@ -1,0 +1,8 @@
+# expect: comment delimiter
+rule demo.says v0.1
+says "closes -/ the header"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.reading >= 70

@@ -1,0 +1,8 @@
+# expect: names neither
+rule demo.scope v0.1
+says "x"
+subject holder
+collection readings : measurement for nobody via of
+conclude Hit when
+  some measurement m in readings
+  require m.reading >= 70

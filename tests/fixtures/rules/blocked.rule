@@ -1,0 +1,14 @@
+# A scoped collection, a global closure, a global collection joined through
+# the walk, and an enum literal.
+rule fixture.blocked v0.1
+says "A holder is BLOCKED if it is engaged with a firm that has an active listing itself, or is owned, directly or through a chain of owners, by a party that does."
+subject holder
+collection engagements : engagement for subject via holder
+collection ownerships  : ownership
+collection listings    : listing
+closure owned-by over ownerships from owned to owner
+conclude Blocked when
+  some engagement e in engagements
+  some listing l in listings
+  require e.counterparty owned-by l.party
+  require l.status = active

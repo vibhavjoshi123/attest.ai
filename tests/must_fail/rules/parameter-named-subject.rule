@@ -1,0 +1,9 @@
+# expect: not `subject`
+rule demo.param v0.1
+says "x"
+subject holder
+parameter subject : holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.reading >= 70

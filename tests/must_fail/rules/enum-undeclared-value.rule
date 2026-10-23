@@ -1,0 +1,9 @@
+# expect: is not one of the values
+# stage: compile
+rule demo.enum v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.test-code = z

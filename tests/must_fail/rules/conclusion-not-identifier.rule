@@ -1,0 +1,8 @@
+# expect: not a Lean identifier
+rule demo.concl v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Over-Limit when
+  some measurement m in readings
+  require m.reading >= 70

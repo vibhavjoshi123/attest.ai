@@ -1,0 +1,17 @@
+# A parameter, collections scoped to it, and a double negation: the shape
+# "every condition is met".
+rule fixture.complete v0.1
+says "The item is complete for the holder when every criterion of the item has a met resolution for the holder."
+subject holder
+parameter target : item
+collection marks  : item-mark  for target via item
+collection crits  : criterion  for target via item
+collection resols : resolution for subject via holder
+conclude Complete when
+  some item-mark m in marks
+  none of
+    some criterion c in crits
+    none of
+      some resolution v in resols
+      require v.crit-key = c.crit-key
+      require v.state = met

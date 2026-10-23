@@ -1,0 +1,103 @@
+# The fixture domain: a neutral schema the core's tests run against.
+#
+# Every construct the rule language has is exercised by one of the rules in
+# `rules/`, and each relation here exists for at least one of them. It is
+# test data, not a model of anything: the names are chosen to be readable,
+# not to describe a real field.
+#
+# `firm` is a subtype of `party` so the coverage check can be tested on a
+# role played by a subtype of the type an export records.
+
+define
+  attribute holder-id, value string;
+  attribute party-key, value string;
+  attribute code-key, value string;
+  attribute item-key, value string;
+  attribute node-key, value string;
+  attribute ref, value string;
+  attribute crit-key, value string;
+  attribute status, value string @values("active", "lifted");
+  attribute state, value string @values("met", "unmet", "unknown");
+  attribute test-code, value string @values("alpha", "beta");
+  attribute amount, value integer;
+  attribute taken-day, value integer;
+
+  entity holder sub subject,
+    owns holder-id @key,
+    plays engagement:holder,
+    plays reading:holder,
+    plays claim:holder,
+    plays resolution:holder,
+    plays start-node:holder,
+    plays open-edge:holder;
+
+  entity party,
+    owns party-key @key,
+    plays listing:party,
+    plays coverage:item;
+
+  entity firm sub party,
+    plays engagement:counterparty,
+    plays ownership:owned,
+    plays ownership:owner;
+
+  entity code,
+    owns code-key @key,
+    plays claim:code,
+    plays code-isa:child,
+    plays code-isa:parent,
+    plays coverage:item;
+
+  entity item,
+    owns item-key @key,
+    plays item-mark:item,
+    plays criterion:item,
+    plays coverage:item;
+
+  entity node,
+    owns node-key @key,
+    plays start-node:node,
+    plays goal-mark:node,
+    plays open-edge:origin,
+    plays open-edge:target,
+    plays coverage:item;
+
+  relation engagement sub fact,
+    relates holder @card(1..1),
+    relates counterparty @card(1..1),
+    owns ref @card(1..1);
+  relation ownership sub fact,
+    relates owned @card(1..1),
+    relates owner @card(1..1);
+  relation listing sub fact,
+    relates party @card(1..1),
+    owns status @card(1..1);
+  relation reading sub fact,
+    relates holder @card(1..1),
+    owns test-code @card(1..1),
+    owns amount @card(1..1),
+    owns taken-day @card(1..1);
+  relation claim sub fact,
+    relates holder @card(1..1),
+    relates code @card(1..1);
+  relation code-isa sub fact,
+    relates child @card(1..1),
+    relates parent @card(1..1);
+  relation item-mark sub fact,
+    relates item @card(1..1);
+  relation criterion sub fact,
+    relates item @card(1..1),
+    owns crit-key @card(1..1);
+  relation resolution sub fact,
+    relates holder @card(1..1),
+    owns crit-key @card(1..1),
+    owns state @card(1..1);
+  relation start-node sub fact,
+    relates holder @card(1..1),
+    relates node @card(1..1);
+  relation goal-mark sub fact,
+    relates node @card(1..1);
+  relation open-edge sub fact,
+    relates holder @card(1..1),
+    relates origin @card(1..1),
+    relates target @card(1..1);

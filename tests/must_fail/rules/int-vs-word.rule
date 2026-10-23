@@ -1,0 +1,9 @@
+# expect: has to be an integer
+# stage: compile
+rule demo.int v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.reading = abc

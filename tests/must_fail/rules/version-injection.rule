@@ -1,0 +1,9 @@
+# expect: rule version
+# A version is interpolated into a Lean comment and a string literal.
+rule demo.x v0.1"++"-/initialize
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.reading >= 70

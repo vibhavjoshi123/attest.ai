@@ -1,0 +1,9 @@
+# expect: needs at least one `some`
+rule demo.none v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  none of
+    require m.reading >= 70

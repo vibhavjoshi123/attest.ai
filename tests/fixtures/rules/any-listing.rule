@@ -1,0 +1,9 @@
+# Global reference data only: no collection is scoped, and none is joined
+# through a role, so no anchor can be derived for it.
+rule fixture.any-listing v0.1
+says "At least one listing is active."
+subject holder
+collection listings : listing
+conclude AnyListing when
+  some listing l in listings
+  require l.status = active
