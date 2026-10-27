@@ -27,7 +27,183 @@ FORBIDDEN = re.compile(
     r"\bset_option\b|skipKernelTC|#eval|#print\b|\brun_cmd\b|\brun_tac\b|"
     r"\brun_elab\b|\belab\b|\bmacro\b|\bsyntax\b|implemented_by|"
     r"@\[extern|\bnative_decide\b|\bunsafe\b|\bpartial\b|\baxiom\b|"
-    r"\binitialize\b|\bopaque\b")
+    r"\binitialize\b|\bopaque\b|"
+    # `native_decide` is not the only spelling. On 4.35.0 `decide +native`,
+    # `decide (config := { native := true })` and `decide (native := true)`
+    # all compile, and each carries a `_native.decide.ax_*` axiom. The
+    # axiom allow-list is the authority and does reject all three — this is
+    # defence in depth, so the file is refused before it is ever run.
+    r"\+native\b|\bnative\s*:=|\bofReduceBool\b|\breduceBool\b")
+
+
+#: Bumped whenever `module_allowed` gets stricter, so a refusal can say
+#: which policy refused and a job can re-run the new policy over stored
+#: artifacts before it ships.
+POLICY_VERSION = 1
+
+#: Top-level commands an imported module may use. An ALLOWLIST, because a
+#: denylist cannot work here: `forbidden` matches none of `notation`,
+#: `infixr`, `prefix`, `postfix`, `macro_rules`, `elab_rules`,
+#: `declare_syntax_cat`, `attribute [...]`, `export`, `open private` or
+#: `#exit` (`\bmacro\b` does not match before `_`). That is tolerable for a
+#: generated case file, whose text the core writes itself, but not for an
+#: imported module: its syntax and its options are active in every case
+#: file that imports it.
+_DECL = (r"(?:(?:private|protected|noncomputable)\s+)*"
+         r"(?:def|theorem|lemma|example|abbrev|structure|inductive|instance)\b")
+_ALLOWED_COMMAND = re.compile(
+    r"import\s+\S+\s*$"
+    r"|namespace\s+[\w.]+\s*$"
+    r"|section(?:\s+[\w.]+)?\s*$"
+    r"|end(?:\s+[\w.]+)?\s*$"
+    r"|variable\b"
+    r"|deriving\b"                      # continues a structure or inductive
+    # `open` takes a LIST of namespaces, and a module may well open two on
+    # one line; a single-name pattern refused a perfectly ordinary module.
+    r"|open\s+[\w.]+(?:\s+[\w.]+)*(?:\s*\([\w\s.]*\))?\s*$"
+    rf"|{_DECL}"
+    # `#print axioms X` is a query: it writes to the log and changes nothing
+    # in the environment. The core's own acceptance reads its output, and
+    # a theorem module may carry one per theorem.
+    r"|#print\s+axioms\s+[\w.]+\s*$",
+    re.S)
+#: attributes a GENERATED module may carry; none are accepted by default
+_ALLOWED_ATTRS = re.compile(r"@\[(?:simp|inline|reducible)\]\s*$")
+
+
+def strip_lean_comments(source: str) -> str:
+    """`source` with comments gone and line structure kept.
+
+    Required before an imported module can be scanned at all: plain
+    `forbidden` flags a module for `unsafe` when that word appears only in
+    the prose of a doc comment ("an unsafe list"). A scan that
+    cannot tell code from prose would refuse the repository's own modules.
+
+    Block comments nest in Lean, and neither kind opens inside a string or
+    character literal, so this is a scanner rather than a regex.
+    """
+    out, i, depth, n = [], 0, 0, len(source)
+    while i < n:
+        ch = source[i]
+        if depth:
+            if source.startswith("/-", i):
+                depth += 1; i += 2; continue
+            if source.startswith("-/", i):
+                depth -= 1; i += 2; continue
+            out.append("\n" if ch == "\n" else " ")
+            i += 1
+            continue
+        if source.startswith("/-", i):
+            depth += 1; i += 2; continue
+        if source.startswith("--", i):
+            while i < n and source[i] != "\n":
+                out.append(" "); i += 1
+            continue
+        if ch in "\"'":
+            quote, j = ch, i + 1
+            out.append(ch)
+            while j < n:
+                if source[j] == "\\":
+                    out.append(source[j:j + 2]); j += 2; continue
+                out.append(source[j])
+                if source[j] == quote or source[j] == "\n":
+                    j += 1; break
+                j += 1
+            i = j
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _commands(source: str):
+    """(line number, text) for each top-level command.
+
+    A command starts in column 0; indented lines continue it, and so do
+    column-0 lines that begin with punctuation. Lean lets a declaration
+    body put a closing bracket in column 0 — a `List` literal spanning a
+    hundred lines and ending with `]` — and treating that as a new command
+    refused `PinaAudit/Pathway.lean` for "line 221: ]".
+
+    Only punctuation is forgiven, not an unknown word: a command this
+    allowlist has never heard of must still be refused rather than
+    swallowed as part of the declaration above it.
+    """
+    lines = source.splitlines()
+    start, buf = None, []
+    for n, line in enumerate(lines, 1):
+        head = line[:1]
+        if (head.strip() and not head.isspace()
+                and (head.isalpha() or head in "_@#")):
+            if buf:
+                yield start, "\n".join(buf)
+            start, buf = n, [line]
+        elif buf:
+            buf.append(line)
+    if buf:
+        yield start, "\n".join(buf)
+
+
+def module_allowed(source: str, *, protected_namespaces=frozenset(),
+                   generated: bool = False) -> str | None:
+    """Why an imported module is refused, or None if every command is allowed.
+
+    Theorem modules were never scanned at all. They are imported into every
+    case file, so their options and their syntax are in force while the case
+    file elaborates — and `CVE-2026-72844` is a metaprogram-registered
+    ill-typed inductive that yields an axiom-free `False`, which is exactly
+    what scanning exists to stop.
+
+    `protected_namespaces` are the namespaces a module may not open or
+    re-enter — the generated schema and rule modules — so a theorem module
+    cannot add declarations that shadow the rule it is supposed to be about.
+    """
+    from . import rulec
+    code = strip_lean_comments(source)
+    safe = set(rulec.SAFE_OPTIONS)
+    stack: list[str] = []
+    for line_no, command in _commands(code):
+        head = command.strip()
+        if not head:
+            continue
+        if head in safe:
+            continue
+        if _ALLOWED_ATTRS.match(head.split("\n")[0].strip()):
+            if not generated:
+                return f"line {line_no}: attribute on a hand-written module"
+            rest = head.split("\n", 1)[1].strip() if "\n" in head else ""
+            if rest and not _ALLOWED_COMMAND.match(rest):
+                return f"line {line_no}: {rest.splitlines()[0][:60]}"
+            continue
+        if not _ALLOWED_COMMAND.match(head):
+            return f"line {line_no}: {head.splitlines()[0][:60]}"
+        first = head.split()[0]
+        if first == "namespace":
+            stack.append(head.split()[1])
+            full = ".".join(stack)
+            for guarded in protected_namespaces:
+                if full == guarded or full.startswith(guarded + "."):
+                    return (f"line {line_no}: namespace {full} is inside the "
+                            f"protected namespace {guarded}")
+        elif first == "end" and stack:
+            stack.pop()
+        elif first == "open":
+            # Plain `open` only. Widening the pattern to accept a LIST of
+            # namespaces — which ordinary modules need — also let
+            # `open private x from Y` through, since each of those words is
+            # an identifier. The modifiers have to be named and refused.
+            operands = head.split(None, 1)[1].split("(")[0].split()
+            bad = {"private", "renaming", "hiding", "from"} & set(operands)
+            if bad:
+                return (f"line {line_no}: open with "
+                        f"{', '.join(sorted(bad))} is not allowed")
+    # the bodies themselves still face the denylist, with the commands the
+    # allowlist just accepted taken out so they cannot trip it
+    bodies = "\n".join(
+        "" if (c.strip() in safe
+               or c.strip().startswith("#print")) else c
+        for _n, c in _commands(code))
+    return forbidden(bodies)
 
 
 def forbidden(source: str) -> str | None:

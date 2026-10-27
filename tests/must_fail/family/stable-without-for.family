@@ -1,0 +1,4 @@
+# expect: needs `for
+family d.x
+  says "t"
+  stable-add: a

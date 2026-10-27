@@ -131,6 +131,174 @@
   "typeql": "define\nfun fixture_any_listing_anylisting_witness_2aae745aa675($subject: holder, $t: datetime) -> { fact-id }:\nmatch\n  $subject isa holder;\n  $l isa listing; $l has recorded-at $l_ra; $l_ra <= $t; not { $l has retracted-at $l_rx; $l_rx <= $t; };\n  $l has fact-id $l_fid;\n  $l has status $l_status;\n  $l_status == \"active\";\nreturn { $l_fid };\n",
   "uses_as_of": false
  },
+ "tests/fixtures/rules/beta-low.rule": {
+  "cases": [
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 299,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19635,
+       "test-code": "beta"
+      },
+      {
+       "amount": 19635,
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19999,
+       "test-code": "alpha"
+      },
+      {
+       "amount": 300,
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19634,
+       "test-code": "beta"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 299, factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 19635, testCode := .beta },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 25,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   },
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 299,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19999,
+       "test-code": "beta"
+      },
+      {
+       "amount": 300,
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 300,
+       "test-code": "beta"
+      },
+      {
+       "amount": 20001,
+       "fact-id": "f003",
+       "holder": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19634,
+       "test-code": "beta"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 299, factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 19999, testCode := .beta },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 148,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   },
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 301,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 20000,
+       "test-code": "alpha"
+      },
+      {
+       "amount": 20000,
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 299,
+       "test-code": "beta"
+      },
+      {
+       "amount": 20000,
+       "fact-id": "f003",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 300,
+       "test-code": "beta"
+      },
+      {
+       "amount": 299,
+       "fact-id": "f004",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19635,
+       "test-code": "beta"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 299, factId := \"f004\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 19635, testCode := .beta },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f004"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 161,
+    "size": 4,
+    "witness": [
+     "f004"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_beta_low_betalow_witness_1c14a2245e78",
+   {}
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.beta-low by attest/rulec.py. Do not edit.\n  rule fixture.beta-low v0.1\n  The holder's most recent beta reading in the last 365 days is below 300.\n  rule source sha256: 1c14a2245e783a89d972161cfc9cb2b15d8e9bc29c0ec331f6225d151bd8f055\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.BetaLow\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.beta-low v0.1\"\ndef ruleSha256 : String := \"1c14a2245e783a89d972161cfc9cb2b15d8e9bc29c0ec331f6225d151bd8f055\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  readings : List Reading\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\n  /-- the instant being decided, in whole days -/\n  asOfDay : Int\nderiving Repr\n\n/-- The holder's most recent beta reading in the last 365 days is below 300. -/\ndef BetaLow (s : Snapshot) : Prop :=\n  \u2203 e \u2208 s.readings,\n    e.holder = s.subject \u2227\n    e.retractedAt = none \u2227\n    e.testCode = .beta \u2227\n    e.amount < 300 \u2227\n    e.takenDay \u2265 (s.asOfDay - 365) \u2227\n    e.takenDay \u2264 s.asOfDay \u2227\n    \u00ac (\u2203 n \u2208 s.readings,\n      n.holder = s.subject \u2227\n      n.retractedAt = none \u2227\n      n.testCode = .beta \u2227\n      n.factId \u2260 e.factId \u2227\n      n.takenDay \u2265 e.takenDay \u2227\n      n.takenDay \u2264 s.asOfDay \u2227\n      n.amount \u2260 e.amount)\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (BetaLow s) := by\n  unfold BetaLow; infer_instance\n\nend Fixture.Rules.Fixture.BetaLow\n",
+  "shape": "BetaLow(some(v0:reading/holder),req(v0.test-code=lit(beta)),req(v0.amount<lit(300)),req(v0.taken-day>=asof-365),req(v0.taken-day<=asof),none[some(v1:reading/holder),req(v1.test-code=lit(beta)),req(v1.fact-id!=v0.fact-id),req(v1.taken-day>=v0.taken-day),req(v1.taken-day<=asof),req(v1.amount!=v0.amount)])",
+  "shape_sha": "29f49d4aa9035d4c23d70205917f7c49eae95ecdac639f7646f4ff2feea549dc",
+  "typeql": "define\nfun fixture_beta_low_betalow_witness_1c14a2245e78($subject: holder, $t: datetime, $asof_day: integer) -> { fact-id }:\nmatch\n  $e isa reading, links (holder: $subject); $e has recorded-at $e_ra; $e_ra <= $t; not { $e has retracted-at $e_rx; $e_rx <= $t; };\n  $e has fact-id $e_fid;\n  $e has test-code $e_test_code;\n  $e_test_code == \"beta\";\n  $e has amount $e_amount;\n  $e_amount < 300;\n  $e has taken-day $e_taken_day;\n  let $d1 = $asof_day - 365;\n  $e_taken_day >= $d1;\n  $e_taken_day <= $asof_day;\n  $e has fact-id $e_fact_id;\n  not {\n    $n isa reading, links (holder: $subject); $n has recorded-at $n_ra; $n_ra <= $t; not { $n has retracted-at $n_rx; $n_rx <= $t; };\n    $n has test-code $n_test_code;\n    $n_test_code == \"beta\";\n    $n has fact-id $n_fact_id;\n    $n_fact_id != $e_fact_id;\n    $n has taken-day $n_taken_day;\n    $n_taken_day >= $e_taken_day;\n    $n_taken_day <= $asof_day;\n    $n has amount $n_amount;\n    $n_amount != $e_amount;\n  };\nreturn { $e_fid };\n",
+  "uses_as_of": true
+ },
  "tests/fixtures/rules/blocked.rule": {
   "cases": [
    {
@@ -1078,6 +1246,144 @@
   "shape": "LatestHigh(some(v0:reading/holder),req(v0.test-code=lit(alpha)),req(v0.amount>=lit(70)),req(v0.taken-day>=asof-180),req(v0.taken-day<=asof),none[some(v1:reading/holder),req(v1.test-code=lit(alpha)),req(v1.fact-id!=v0.fact-id),req(v1.taken-day>=v0.taken-day),req(v1.taken-day<=asof),req(v1.amount!=v0.amount)])",
   "shape_sha": "e145b1650436c3689911a4fccf4904ba4d26bbc88b05780ce1e36537502240a9",
   "typeql": "define\nfun fixture_latest_high_latesthigh_witness_7293f879fcfd($subject: holder, $t: datetime, $asof_day: integer) -> { fact-id }:\nmatch\n  $r isa reading, links (holder: $subject); $r has recorded-at $r_ra; $r_ra <= $t; not { $r has retracted-at $r_rx; $r_rx <= $t; };\n  $r has fact-id $r_fid;\n  $r has test-code $r_test_code;\n  $r_test_code == \"alpha\";\n  $r has amount $r_amount;\n  $r_amount >= 70;\n  $r has taken-day $r_taken_day;\n  let $d1 = $asof_day - 180;\n  $r_taken_day >= $d1;\n  $r_taken_day <= $asof_day;\n  $r has fact-id $r_fact_id;\n  not {\n    $n isa reading, links (holder: $subject); $n has recorded-at $n_ra; $n_ra <= $t; not { $n has retracted-at $n_rx; $n_rx <= $t; };\n    $n has test-code $n_test_code;\n    $n_test_code == \"alpha\";\n    $n has fact-id $n_fact_id;\n    $n_fact_id != $r_fact_id;\n    $n has taken-day $n_taken_day;\n    $n_taken_day >= $r_taken_day;\n    $n_taken_day <= $asof_day;\n    $n has amount $n_amount;\n    $n_amount != $r_amount;\n  };\nreturn { $r_fid };\n",
+  "uses_as_of": true
+ },
+ "tests/fixtures/rules/latest-low.rule": {
+  "cases": [
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 19820,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19821,
+       "test-code": "beta"
+      },
+      {
+       "amount": 69,
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 20000,
+       "test-code": "alpha"
+      },
+      {
+       "amount": 70,
+       "fact-id": "f003",
+       "holder": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19821,
+       "test-code": "beta"
+      },
+      {
+       "amount": 19819,
+       "fact-id": "f004",
+       "holder": "s2",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 71,
+       "test-code": "alpha"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 69, factId := \"f002\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 20000, testCode := .alpha },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f002"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 29,
+    "size": 4,
+    "witness": [
+     "f002"
+    ]
+   },
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 69,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19820,
+       "test-code": "alpha"
+      },
+      {
+       "amount": 71,
+       "fact-id": "f002",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19999,
+       "test-code": "beta"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 69, factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 19820, testCode := .alpha },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 36,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   },
+   {
+    "data": {
+     "readings": [
+      {
+       "amount": 69,
+       "fact-id": "f001",
+       "holder": "s1",
+       "recorded-at": "2026-01-01T00:00:00",
+       "retracted-at": null,
+       "source": "src",
+       "taken-day": 19999,
+       "test-code": "alpha"
+      }
+     ]
+    },
+    "proof": "\u27e8{ holder := \"s1\", amount := 69, factId := \"f001\", recordedAt := \"2026-01-01T00:00:00\", retractedAt := none, source := \"src\", takenDay := 19999, testCode := .alpha },\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide,\n   by decide\u27e9",
+    "relied": [
+     "f001"
+    ],
+    "scopes": {
+     "subject": "s1"
+    },
+    "seed": 39,
+    "size": 4,
+    "witness": [
+     "f001"
+    ]
+   }
+  ],
+  "double_negated": [],
+  "fn_names": [
+   "fixture_latest_low_latestlow_witness_2272f8651ea9",
+   {}
+  ],
+  "lean": "/-\n  GENERATED from rule fixture.latest-low by attest/rulec.py. Do not edit.\n  rule fixture.latest-low v0.1\n  The holder's most recent alpha reading in the last 180 days is below 70.\n  rule source sha256: 2272f8651ea9ad4792d6286dcfc2b93e5bb9f7289ef78d1dee99c2956bb50623\n-/\nimport Fixture.Schema\n\nnamespace Fixture.Rules.Fixture.LatestLow\nopen Fixture.Schema\n\ndef ruleId : String := \"fixture.latest-low v0.1\"\ndef ruleSha256 : String := \"2272f8651ea9ad4792d6286dcfc2b93e5bb9f7289ef78d1dee99c2956bb50623\"\n\n/-- What one case may look at: values of the types generated from TypeDB. -/\nstructure Snapshot where\n  readings : List Reading\n  /-- whose case this is; every scoped binder checks it -/\n  subject : String\n  /-- the instant being decided, in whole days -/\n  asOfDay : Int\nderiving Repr\n\n/-- The holder's most recent alpha reading in the last 180 days is below 70. -/\ndef LatestLow (s : Snapshot) : Prop :=\n  \u2203 r \u2208 s.readings,\n    r.holder = s.subject \u2227\n    r.retractedAt = none \u2227\n    r.testCode = .alpha \u2227\n    r.amount < 70 \u2227\n    r.takenDay \u2265 (s.asOfDay - 180) \u2227\n    r.takenDay \u2264 s.asOfDay \u2227\n    \u00ac (\u2203 n \u2208 s.readings,\n      n.holder = s.subject \u2227\n      n.retractedAt = none \u2227\n      n.testCode = .alpha \u2227\n      n.factId \u2260 r.factId \u2227\n      n.takenDay \u2265 r.takenDay \u2227\n      n.takenDay \u2264 s.asOfDay \u2227\n      n.amount \u2260 r.amount)\n\n-- Elaboration budget only. Putting the subject and the retraction\n-- check on every binder grew the proposition past the default\n-- instance-search size, and the search gave up on the largest\n-- rule. These three options raise limits; none of them affects\n-- what the kernel accepts, and `attest/rulec.py` emits no others\n-- (the core's own test suite checks that). A rule module is\n-- compared byte-for-byte with a fresh compile before every\n-- decision, so it cannot acquire an option the compiler did\n-- not write.\nset_option synthInstance.maxSize 2000 in\ninstance (s : Snapshot) : Decidable (LatestLow s) := by\n  unfold LatestLow; infer_instance\n\nend Fixture.Rules.Fixture.LatestLow\n",
+  "shape": "LatestLow(some(v0:reading/holder),req(v0.test-code=lit(alpha)),req(v0.amount<lit(70)),req(v0.taken-day>=asof-180),req(v0.taken-day<=asof),none[some(v1:reading/holder),req(v1.test-code=lit(alpha)),req(v1.fact-id!=v0.fact-id),req(v1.taken-day>=v0.taken-day),req(v1.taken-day<=asof),req(v1.amount!=v0.amount)])",
+  "shape_sha": "1baa1f7fd7ffc131ce29d488d87c6c8b552eeba136c3586b20c29cf5c25c3c5f",
+  "typeql": "define\nfun fixture_latest_low_latestlow_witness_2272f8651ea9($subject: holder, $t: datetime, $asof_day: integer) -> { fact-id }:\nmatch\n  $r isa reading, links (holder: $subject); $r has recorded-at $r_ra; $r_ra <= $t; not { $r has retracted-at $r_rx; $r_rx <= $t; };\n  $r has fact-id $r_fid;\n  $r has test-code $r_test_code;\n  $r_test_code == \"alpha\";\n  $r has amount $r_amount;\n  $r_amount < 70;\n  $r has taken-day $r_taken_day;\n  let $d1 = $asof_day - 180;\n  $r_taken_day >= $d1;\n  $r_taken_day <= $asof_day;\n  $r has fact-id $r_fact_id;\n  not {\n    $n isa reading, links (holder: $subject); $n has recorded-at $n_ra; $n_ra <= $t; not { $n has retracted-at $n_rx; $n_rx <= $t; };\n    $n has test-code $n_test_code;\n    $n_test_code == \"alpha\";\n    $n has fact-id $n_fact_id;\n    $n_fact_id != $r_fact_id;\n    $n has taken-day $n_taken_day;\n    $n_taken_day >= $r_taken_day;\n    $n_taken_day <= $asof_day;\n    $n has amount $n_amount;\n    $n_amount != $r_amount;\n  };\nreturn { $r_fid };\n",
   "uses_as_of": true
  },
  "tests/fixtures/rules/reaches.rule": {

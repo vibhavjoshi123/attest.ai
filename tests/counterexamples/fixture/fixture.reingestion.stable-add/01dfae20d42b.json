@@ -1,0 +1,64 @@
+{
+  "before": {
+    "as_of_day": 20000,
+    "data": {
+      "readings": []
+    },
+    "subject": "s1"
+  },
+  "defect": 2,
+  "kernel": {
+    "axioms": [
+      "propext"
+    ],
+    "confirmed": true,
+    "rules": [
+      "latest-high@after",
+      "latest-high@before",
+      "latest-low@after",
+      "latest-low@before"
+    ]
+  },
+  "kind": "stable-add",
+  "origin": {
+    "as": "f001-dup",
+    "fact-id": "f001",
+    "generator": "mutator",
+    "mutator": "duplicate"
+  },
+  "property": "fixture.reingestion.stable-add",
+  "rank": 0,
+  "rules_pattern": "tests/mutants/fixture/defect2-{}.rule",
+  "says": "an exact duplicate on re-ingestion silences a branch",
+  "shrink_log": [
+    "dropped readings/f001"
+  ],
+  "signature": "01dfae20d42b",
+  "status": "historical",
+  "verdicts": {
+    "latest-high": false,
+    "latest-low": false
+  },
+  "verdicts_after": {
+    "latest-high": false,
+    "latest-low": true
+  },
+  "world": {
+    "as_of_day": 20000,
+    "data": {
+      "readings": [
+        {
+          "amount": 69,
+          "fact-id": "f001-dup",
+          "holder": "s1",
+          "recorded-at": "2026-01-01T00:00:00",
+          "retracted-at": null,
+          "source": "src",
+          "taken-day": 19820,
+          "test-code": "alpha"
+        }
+      ]
+    },
+    "subject": "s1"
+  }
+}

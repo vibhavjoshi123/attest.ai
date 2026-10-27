@@ -1,0 +1,4 @@
+# expect: is not a name
+family d.x
+  says "t"
+  exclusive: a, b!c

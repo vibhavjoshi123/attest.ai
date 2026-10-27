@@ -1,0 +1,18 @@
+# Illustrative rule, not legal guidance.
+
+rule sanctions.owned-by-listed v0.1
+says "A vendor is BLOCKED if it carries an ACTIVE sanctions listing itself, or is owned, directly or through a chain of owners, by a party that does."
+
+subject party
+
+collection engagements : engagement for subject via vendor
+collection ownerships  : ownership
+collection listings    : listing
+
+closure owned-by over ownerships from owned to owner
+
+conclude Blocked when
+  some engagement e in engagements
+  some listing l in listings
+  require e.vendor is-a l.party
+  require l.list-status = active

@@ -288,7 +288,28 @@ def _check_names(r):
                         f"{field} {s[field]!r} is not a name")
 
 
+#: the header lines every rule must carry, and the key each one fills in
+_REQUIRED = (("rule", "id"), ("says", "says"), ("subject", "subject"),
+             ("conclude", "conclusion"))
+
+
+def _check_present(r):
+    """Refuse a rule missing a header line, as a RuleError.
+
+    These came out as a bare `KeyError('says')` from deep inside `_check`.
+    A `KeyError` is a crash, not a refusal: it carries no line, names a
+    dictionary key rather than the thing the author left out, and it is not
+    what callers catch — `rulec.load` and the must-fail corpus both expect
+    `RuleError`. A rule arriving from a generator rather than a person makes
+    this the difference between a refusal and a traceback.
+    """
+    for line, key in _REQUIRED:
+        if r.get(key) in (None, ""):
+            raise RuleError(f"no `{line}` line: a rule needs one")
+
+
 def _check(r):
+    _check_present(r)
     _safe_prose(r["says"])
     _check_names(r)
     _check_params(r)

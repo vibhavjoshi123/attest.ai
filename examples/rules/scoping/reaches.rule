@@ -1,0 +1,20 @@
+# The goal is reachable from the sample's start over the sample's OWN open
+# edges. `goal` is a parameter: the rule is decided for a (sample, node) pair
+# without inventing an entity whose key spells the pair.
+
+rule scoping.reaches v0.1
+says "The goal node is reachable from the sample's start node over edges the sample has opened."
+
+subject sample
+parameter goal : node
+
+collection starts : start-node for subject via sample
+collection goals  : goal-mark  for goal via node
+collection edges  : open-edge  for subject via sample
+
+closure reach over edges from origin to target
+
+conclude Reaches when
+  some start-node a in starts
+  some goal-mark g in goals
+  require a.node reach g.node

@@ -1,0 +1,7 @@
+# expect: no `says` line
+rule demo.nosays v0.1
+subject item
+collection rows : row for subject via item
+conclude C when
+  some row m in rows
+  require m.source = "x"

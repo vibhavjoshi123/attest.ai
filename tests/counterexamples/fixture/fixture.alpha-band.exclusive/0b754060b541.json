@@ -1,0 +1,60 @@
+{
+  "before": null,
+  "defect": 1,
+  "kernel": {
+    "axioms": [
+      "propext"
+    ],
+    "confirmed": true,
+    "rules": [
+      "latest-high",
+      "latest-low"
+    ]
+  },
+  "kind": "exclusive",
+  "origin": {
+    "collection": "readings",
+    "generator": "small-scope",
+    "rows": 2
+  },
+  "property": "fixture.alpha-band.exclusive",
+  "rank": 3,
+  "rules_pattern": "tests/mutants/fixture/historical-{}.rule",
+  "says": "two readings on the same day fire both branches at once",
+  "shrink_log": [],
+  "signature": "0b754060b541",
+  "status": "historical",
+  "verdicts": {
+    "latest-high": true,
+    "latest-low": true
+  },
+  "verdicts_after": null,
+  "world": {
+    "as_of_day": 20000,
+    "data": {
+      "readings": [
+        {
+          "amount": 69,
+          "fact-id": "f001",
+          "holder": "s1",
+          "recorded-at": "2026-01-01T00:00:00",
+          "retracted-at": null,
+          "source": "src",
+          "taken-day": 19820,
+          "test-code": "alpha"
+        },
+        {
+          "amount": 70,
+          "fact-id": "f002",
+          "holder": "s1",
+          "recorded-at": "2026-01-01T00:00:00",
+          "retracted-at": null,
+          "source": "src",
+          "taken-day": 19820,
+          "test-code": "alpha"
+        }
+      ]
+    },
+    "subject": "s1"
+  }
+}

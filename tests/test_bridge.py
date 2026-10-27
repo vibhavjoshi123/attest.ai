@@ -181,8 +181,8 @@ def _():
 @check("an attribute subtype keeps its parent's value type (was String)")
 def _():
     m = tb.parse('define\nattribute amount @abstract,\n value integer;\n'
-                 'attribute dose,\n sub amount;\nentity e,\n  owns dose @card(1..1);\n')
-    assert tb.fields(m, "e") == [("dose", "dose", "Int", "int")], tb.fields(m, "e")
+                 'attribute volume,\n sub amount;\nentity e,\n  owns volume @card(1..1);\n')
+    assert tb.fields(m, "e") == [("volume", "volume", "Int", "int")], tb.fields(m, "e")
 
 
 @check("a sub-relation keeps its parent's roles (they were dropped)")

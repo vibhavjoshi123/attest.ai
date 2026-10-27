@@ -56,6 +56,10 @@ def main() -> int:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(rulec.compile_lean(rule, model, RULES_NS, SCHEMA_NS))
         modules.append(rulec.module(rule, RULES_NS))
+    # The hand-written properties module, when present, is part of the
+    # package: the root imports it, so `lake build` checks its proofs.
+    if (LEAN / ROOT_MODULE / "Properties.lean").exists():
+        modules.append(f"{ROOT_MODULE}.Properties")
     (LEAN / f"{ROOT_MODULE}.lean").write_text(
         "".join(f"import {m}\n" for m in modules))
     print(f"wrote {len(modules) - 1} rule modules and the types to "

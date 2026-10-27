@@ -1,0 +1,3 @@
+# expect: expected `family <id>
+family d.x under alpha
+  exclusive: a, b

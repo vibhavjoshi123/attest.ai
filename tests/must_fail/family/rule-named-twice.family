@@ -1,0 +1,4 @@
+# expect: a rule is named twice
+family d.x
+  says "t"
+  exclusive: a, a

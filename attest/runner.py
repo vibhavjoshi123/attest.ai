@@ -20,6 +20,7 @@ fact about the world from "the search found nothing".
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import hashlib
 import json
@@ -32,6 +33,7 @@ from typing import Any
 
 from . import rulec, typebridge
 from .domain import Domain, Snapshot
+from . import kernel as kernel_policy
 from .kernel import Check, Kernel, case_source
 from .store import (UnknownSubject, VerificationError, dt, ident, instant,
                     seal_window, _trim)
@@ -152,7 +154,13 @@ def case_file(snapshot: Snapshot, model, rule, lean) -> CaseFile:
                f"({rule_module}.{conclusion} snap) := Iff.rfl\n")
     return CaseFile(
         namespace=f"Case_{snapshot.sha256[:12]}",
-        imports=(rule_module, *lean.theorem_modules),
+        # Sorted, so the import list is canonical. `decide` had the
+        # domain's declared tuple order and `recheck` can only know the SET
+        # of governed modules, so a domain listing two modules in
+        # non-alphabetical order would have regenerated a different file
+        # from the one it stored. No shipped domain has two, which is
+        # exactly why it would have gone unnoticed.
+        imports=(rule_module, *sorted(lean.theorem_modules)),
         opens=(lean.schema_namespace, rule_module),
         defs=lean_snapshot(snapshot, model, rule) + binding,
         positive=positive, negative=f"¬ ({positive})")
@@ -375,6 +383,29 @@ def sources_of(domain: Domain) -> list[tuple[str, str, str]]:
     return out
 
 
+def check_modules(domain: Domain, sources=None) -> None:
+    """Refuse a theorem module whose contents the module policy rejects.
+
+    Raises `OutOfSync`, like the other "the library is not what it should
+    be" refusals, so a decision fails closed rather than being recorded
+    against a library nobody scanned. The message names the policy version,
+    because tightening the policy can refuse a module that an earlier
+    version allowed, and that has to read as a policy change rather than as
+    tampering.
+    """
+    protected = frozenset({domain.lean.schema_namespace,
+                           domain.lean.rules_namespace})
+    for module, kind, path in (sources or sources_of(domain)):
+        if kind != "theorems":
+            continue
+        why = kernel_policy.module_allowed(
+            pathlib.Path(path).read_text(), protected_namespaces=protected)
+        if why is not None:
+            raise typebridge.OutOfSync(
+                f"theorem module {module} is refused by module policy "
+                f"v{kernel_policy.POLICY_VERSION}: {why}")
+
+
 def _unsettled(rule, snapshot, found, attempts, kernel, domain, store,
                differential: str) -> Certificate:
     """A certificate with no verdict. `record` refuses it."""
@@ -470,6 +501,16 @@ def decide(store, domain: Domain, subject: str, as_of: str, *,
     artifacts = typebridge.check_sync(
         store, str(domain.lean.schema_path), sources_of(domain),
         domain.lean.schema_namespace)
+    # Every theorem module is scanned before the package is built. Their
+    # bytes were already pinned to a published artifact by `check_sync`, but
+    # nothing had ever looked at what those bytes CONTAIN — and a theorem
+    # module is imported into every case file, so its notation, its options
+    # and its instances are in force while the case file elaborates. The
+    # case file's own text is scanned; what it imports was not.
+    #
+    # `Kernel.build` compiles whatever is on disk, so this runs here, before
+    # the build, rather than after it.
+    check_modules(domain)
 
     declared = [p["name"] for p in rule.get("params", [])]
     given = dict(params or {})
@@ -742,7 +783,7 @@ def decisions_after_rule_change(store, rule) -> list[dict[str, Any]]:
                            if same else
                            ("the rule asks a different question; this "
                             "verdict answered the old one")})
-    return sorted(out, key=lambda r: r["t"])
+    return sorted(out, key=_impact_order)
 
 
 def _reject_module_collision(domain: Domain, rule) -> None:
@@ -853,8 +894,8 @@ def usable_anchors(model, patterns, covered_types=None):
 
     def recorded(tname):
         """Is this type, or one it inherits from, recorded as covered? A
-        domain may record a parent (`substance`) where the anchor binds a
-        child (`drug`); the coverage edge is on the same instance either
+        domain may record a parent (`party`) where the anchor binds a
+        child (`firm`); the coverage edge is on the same instance either
         way."""
         seen = set()
         while tname and tname not in seen:
@@ -1040,8 +1081,9 @@ def recheck(store, decision_id: str, *, domain, lean_dir=None,
         f'match $d isa decision, has decision-id "{did}";'
         f" governance (decision: $d, artifact: $a);"
         f" $a has artifact-id $aid, has artifact-kind $k,"
-        f" has lean-source $src, has source-sha256 $h;"
-        f" select $aid, $k, $src, $h;")
+        f" has lean-module $m, has lean-source $src,"
+        f" has source-sha256 $h;"
+        f" select $aid, $k, $m, $src, $h;")
     if not governing:
         return Recheck(did, decision["v"], False,
                        "no artifacts are cited by this decision", {})
@@ -1049,6 +1091,7 @@ def recheck(store, decision_id: str, *, domain, lean_dir=None,
     artifacts: dict[str, str] = {}
     stored_rule_source = stored_rule_library = None
     stored_schema_types = None
+    governed_theorems: list[str] = []
     for row in governing:
         if sha256(row["src"]) != row["h"]:
             return Recheck(did, decision["v"], False,
@@ -1061,6 +1104,8 @@ def recheck(store, decision_id: str, *, domain, lean_dir=None,
             stored_rule_library = row["src"]
         elif row["k"] == "schema-types":
             stored_schema_types = row["src"]
+        elif row["k"] == "theorems":
+            governed_theorems.append(row["m"])
 
     # ── §7.8 step 2: re-export, and confirm the hash ────────────────
     if stored_rule_source is None:
@@ -1126,8 +1171,18 @@ def recheck(store, decision_id: str, *, domain, lean_dir=None,
                            snapshot_matches=True)
     # the same builder `decide` used, so "regenerate" cannot drift from
     # "generate" (see CaseFile)
+    #
+    # The theorem modules come from the artifacts this decision GOVERNED,
+    # not from the domain object in the working tree. They are part of the
+    # case file's import list, so taking them from the working tree meant
+    # that adding or removing a theorem module changed the regeneration of
+    # every past decision — and the mismatch was reported as "the stored
+    # case file has been altered", which is the one thing it was not. The
+    # whole point of this function is to answer the question from storage.
+    lean = dataclasses.replace(
+        domain.lean, theorem_modules=tuple(sorted(governed_theorems)))
     try:
-        case = case_file(snapshot, model, rule, domain.lean)
+        case = case_file(snapshot, model, rule, lean)
     except Exception as exc:                                  # noqa: BLE001
         return Recheck(did, decision["v"], False,
                        f"the snapshot does not render as Lean: "
@@ -1243,6 +1298,20 @@ def decisions_relying_on(store, fact_id: str) -> list[dict[str, Any]]:
 _NO_ANCHORS = object()
 
 
+def _impact_order(row):
+    """A total order over impact hits: when it was decided, then what it
+    decided, then which decision.
+
+    Sorting on the timestamp alone is not a total order — two decisions made
+    in the same instant tie, and Python's sort then preserves whatever order
+    the query rows arrived in, which is not stable across runs. Callers that
+    write the result into a committed artifact saw it reorder between
+    identical runs. The decision id is last and only breaks a tie between
+    two decisions of the same rule at the same instant.
+    """
+    return (row["t"], row.get("v") or "", row["did"])
+
+
 def affected_decisions(store, fact_id: str,
                        scope_anchors=_NO_ANCHORS) -> list[dict[str, Any]]:
     """Decisions a change to `fact_id` may invalidate.
@@ -1274,7 +1343,7 @@ def affected_decisions(store, fact_id: str,
         f' select $r;')
     recorded = stamp[0]["r"] if stamp else None
     if not recorded:
-        return sorted(hits.values(), key=lambda r: r["t"])
+        return sorted(hits.values(), key=_impact_order)
 
     for anchor in scope_anchors:
         for row in store.rows(
@@ -1289,4 +1358,4 @@ def affected_decisions(store, fact_id: str,
             if _before(row["t"], recorded) and row["did"] not in hits:
                 hits[row["did"]] = {
                     **row, "why": "in scope when the fact was added"}
-    return sorted(hits.values(), key=lambda r: r["t"])
+    return sorted(hits.values(), key=_impact_order)

@@ -1,0 +1,4 @@
+# expect: needs at least 2
+family d.x
+  says "t"
+  exclusive: only-one

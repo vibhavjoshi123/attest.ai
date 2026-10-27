@@ -1,0 +1,24 @@
+# A stop rule over the other test code: the latest beta reading in the last
+# year is below 300. A stale reading must not be what clears it, and a newer
+# reading must not be ignored because an older one was above the limit.
+
+rule fixture.beta-low v0.1
+says "The holder's most recent beta reading in the last 365 days is below 300."
+
+subject holder
+
+collection readings : reading for subject via holder
+
+conclude BetaLow when
+  some reading e in readings
+  require e.test-code = beta
+  require e.amount < 300
+  require e.taken-day >= as-of-day - 365
+  require e.taken-day <= as-of-day
+  none of
+    some reading n in readings
+    require n.test-code = beta
+    require n.fact-id != e.fact-id
+    require n.taken-day >= e.taken-day
+    require n.taken-day <= as-of-day
+    require n.amount != e.amount

@@ -1,0 +1,23 @@
+# Declared properties over the two branches of the alpha band.
+#
+# Parsed by `attest.props.parse_family`, not by `rulec.parse`: this is a
+# claim ABOUT several rules, not a rule, and keeping it out of the rule
+# language leaves that language and its golden files untouched.
+#
+# The band deliberately does NOT declare `covers`. A stale alpha reading, or
+# none at all, matches no branch by design, so a `covers` claim here would
+# be false, and would be the wrong thing to make true.
+
+family fixture.alpha-band
+  says "the two branches of the alpha band never both apply, and a reading
+        dated after the decision never changes either"
+  exclusive: latest-high, latest-low
+  stable-add: latest-high, latest-low for readings when taken-day > as-of-day
+
+# Re-ingestion must not move a holder between branches. Two feeds reporting
+# one reading, or the same feed read twice, give two rows with different
+# fact-ids and the same value; a tie-break keyed on `fact-id !=` silences the
+# branch for any such pair. Silence in a stop rule reads as permission.
+family fixture.reingestion
+  says "an exact duplicate of a reading already present changes no verdict"
+  stable-add: latest-high, latest-low for readings when duplicate
