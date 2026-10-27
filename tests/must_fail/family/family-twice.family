@@ -1,0 +1,5 @@
+# expect: declared twice
+family d.x
+  exclusive: a, b
+family d.x
+  exclusive: c, d

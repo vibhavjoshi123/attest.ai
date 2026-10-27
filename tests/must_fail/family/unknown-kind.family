@@ -1,0 +1,4 @@
+# expect: unknown kind
+family d.x
+  says "t"
+  excluded: a, b

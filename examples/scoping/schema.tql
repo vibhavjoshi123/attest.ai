@@ -1,0 +1,59 @@
+# Regression domain for three core fixes. Deliberately small and abstract:
+# shared graph nodes, per-sample edges, per-sample resolutions.
+#
+#  1. a closure over a SCOPED collection walks only the scope's own edges
+#  2. a rule takes parameters beyond its subject
+#  3. a fact read under a double negation is relied on, so retracting it
+#     flags the decision
+#  plus: a rule over global facts only can be deployed
+define
+
+  attribute sample-id, value string;
+  attribute node-id, value string;
+  attribute edge-id, value string;
+  attribute crit-key, value string;
+  attribute state, value string @values("resolved-true", "resolved-false", "unknown");
+
+  # Nodes and edge definitions are SHARED across samples, as one route map is
+  # shared across travellers. Only the edges a sample has opened are its own.
+  entity node,
+    owns node-id @key,
+    plays start-node:node,
+    plays goal-mark:node,
+    plays open-edge:origin,
+    plays open-edge:target,
+    plays coverage:item;
+
+  entity edge-def,
+    owns edge-id @key,
+    plays edge-mark:edge,
+    plays criterion:edge,
+    plays coverage:item;
+
+  entity sample sub subject,
+    owns sample-id @key,
+    plays start-node:sample,
+    plays open-edge:sample,
+    plays resolution:sample;
+
+  relation start-node sub fact,
+    relates sample @card(1..1), relates node @card(1..1);
+
+  relation goal-mark sub fact,
+    relates node @card(1..1);
+
+  relation open-edge sub fact,
+    relates sample @card(1..1),
+    relates origin @card(1..1), relates target @card(1..1);
+
+  relation edge-mark sub fact,
+    relates edge @card(1..1);
+
+  relation criterion sub fact,
+    relates edge @card(1..1),
+    owns crit-key @card(1..1);
+
+  relation resolution sub fact,
+    relates sample @card(1..1),
+    owns crit-key @card(1..1),
+    owns state @card(1..1);

@@ -1,0 +1,63 @@
+{
+  "before": {
+    "as_of_day": 20000,
+    "data": {
+      "readings": []
+    },
+    "subject": "s1"
+  },
+  "defect": 3,
+  "kernel": {
+    "axioms": [
+      "propext"
+    ],
+    "confirmed": true,
+    "rules": [
+      "latest-high@after",
+      "latest-high@before",
+      "latest-low@after",
+      "latest-low@before"
+    ]
+  },
+  "kind": "stable-add",
+  "origin": {
+    "collection": "readings",
+    "days-after": 1,
+    "generator": "future-dated"
+  },
+  "property": "fixture.alpha-band.stable-add",
+  "rank": 2,
+  "rules_pattern": "tests/mutants/fixture/historical-{}.rule",
+  "says": "a reading dated after the decision changes a settled verdict",
+  "shrink_log": [
+    "dropped readings/f001"
+  ],
+  "signature": "4333984bc283",
+  "status": "historical",
+  "verdicts": {
+    "latest-high": false,
+    "latest-low": false
+  },
+  "verdicts_after": {
+    "latest-high": true,
+    "latest-low": false
+  },
+  "world": {
+    "as_of_day": 20000,
+    "data": {
+      "readings": [
+        {
+          "amount": 70,
+          "fact-id": "future-1",
+          "holder": "s1",
+          "recorded-at": "2026-01-01T00:00:00",
+          "retracted-at": null,
+          "source": "src",
+          "taken-day": 20001,
+          "test-code": "alpha"
+        }
+      ]
+    },
+    "subject": "s1"
+  }
+}

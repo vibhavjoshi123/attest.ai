@@ -1,0 +1,57 @@
+{
+ "tests/fixtures/rules/alpha-band.family": {
+  "declarations": [
+   {
+    "collections": [],
+    "gate": null,
+    "id": "fixture.alpha-band.exclusive",
+    "kind": "exclusive",
+    "rules": [
+     "latest-high",
+     "latest-low"
+    ],
+    "says": "the two branches of the alpha band never both apply, and a reading dated after the decision never changes either",
+    "when": null
+   },
+   {
+    "collections": [
+     "readings"
+    ],
+    "gate": null,
+    "id": "fixture.alpha-band.stable-add",
+    "kind": "stable-add",
+    "rules": [
+     "latest-high",
+     "latest-low"
+    ],
+    "says": "the two branches of the alpha band never both apply, and a reading dated after the decision never changes either",
+    "when": "taken-day > as-of-day"
+   },
+   {
+    "collections": [
+     "readings"
+    ],
+    "gate": null,
+    "id": "fixture.reingestion.stable-add",
+    "kind": "stable-add",
+    "rules": [
+     "latest-high",
+     "latest-low"
+    ],
+    "says": "an exact duplicate of a reading already present changes no verdict",
+    "when": "duplicate"
+   }
+  ],
+  "rules_available": [
+   "any-listing",
+   "beta-low",
+   "blocked",
+   "complete",
+   "in-group",
+   "latest-high",
+   "latest-low",
+   "reaches",
+   "two-parties"
+  ]
+ }
+}

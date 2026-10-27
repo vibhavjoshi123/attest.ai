@@ -1,0 +1,19 @@
+# The historical form of the beta stop rule: same-day ties and no upper bound
+# on `taken-day`, like the band's historical rules.
+
+rule fixture.beta-low v0.1
+says "The holder's most recent beta reading in the last 365 days is below 300."
+
+subject holder
+
+collection readings : reading for subject via holder
+
+conclude BetaLow when
+  some reading e in readings
+  require e.test-code = beta
+  require e.amount < 300
+  require e.taken-day >= as-of-day - 365
+  none of
+    some reading n in readings
+    require n.test-code = beta
+    require n.taken-day > e.taken-day

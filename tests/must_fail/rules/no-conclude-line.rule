@@ -1,0 +1,5 @@
+# expect: no `conclude` line
+rule demo.noconclude v0.1
+says "t"
+subject item
+collection rows : row for subject via item

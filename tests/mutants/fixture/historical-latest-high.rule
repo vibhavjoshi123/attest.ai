@@ -1,0 +1,21 @@
+# Historical defect 1 and 3, reproduced: "latest" is `n.taken-day >
+# r.taken-day`, so two same-day readings with different values both count as
+# latest; and there is no upper bound on `taken-day`, so a reading dated after
+# the decision can win.
+
+rule fixture.latest-high v0.1
+says "The holder's most recent alpha reading in the last 180 days is at least 70."
+
+subject holder
+
+collection readings : reading for subject via holder
+
+conclude LatestHigh when
+  some reading r in readings
+  require r.test-code = alpha
+  require r.amount >= 70
+  require r.taken-day >= as-of-day - 180
+  none of
+    some reading n in readings
+    require n.test-code = alpha
+    require n.taken-day > r.taken-day

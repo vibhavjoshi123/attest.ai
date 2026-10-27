@@ -534,7 +534,7 @@ def _():
     enforced here, the one place that sees every row at once."""
     rows = [{"fact-id": "f-1", "v": 1}, {"fact-id": "f-1", "v": 2}]
     try:
-        make_snapshot("h-1", "2026-10-10T00:00:00", {"labs": rows})
+        make_snapshot("h-1", "2026-10-10T00:00:00", {"readings": rows})
     except VerificationError as exc:
         assert "appears twice" in str(exc), exc
     else:
@@ -1800,6 +1800,274 @@ def _():
         assert found == expect, f"{path.name}: found {found!r}, want {expect!r}"
 
 
+@check("every theorem module in the must-fail corpus is refused")
+def _():
+    from attest.kernel import module_allowed
+    files = sorted((MUST_FAIL / "theorems").glob("*.lean"))
+    assert files, "the corpus is empty"
+    for path in files:
+        text = path.read_text()
+        expect = _header(text, "expect", "--")
+        assert expect, f"{path.name}: no `-- expect:` header"
+        found = module_allowed(text)
+        assert found, f"{path.name}: ALLOWED, but must be refused"
+        assert expect in found, (
+            f"{path.name}: refused for the wrong reason: {found!r}, "
+            f"want {expect!r} in it")
+
+
+@check("every theorem module the repository ships passes the allowlist")
+def _():
+    from attest.kernel import module_allowed
+    root = pathlib.Path(__file__).resolve().parents[1]
+    # The fixture's hand-written theorem module, and every example's own
+    # modules. Generated rule modules are the compiler's output and are held
+    # to it by the golden files instead.
+    shipped = sorted((root / "tests" / "fixtures" / "lean").glob("*/*.lean")) \
+        + sorted((root / "examples").glob("*/lean/*/*.lean"))
+    checked = 0
+    for path in shipped:
+        if ".lake" in path.parts or "/Rules/" in str(path):
+            continue
+        why = module_allowed(path.read_text())
+        assert why is None, f"{path}: refused by the allowlist: {why}"
+        checked += 1
+    assert checked >= 2, f"only {checked} modules scanned"
+    # and the scan is not vacuous: without comment stripping, a module whose
+    # doc comment says "unsafe" in prose trips the scan for `unsafe`
+    from attest.kernel import forbidden, strip_lean_comments
+    prose = ("/-- Refuses an unsafe list of inputs. -/\n"
+             "def ok : Nat := 1\n")
+    assert forbidden(prose) == "unsafe", forbidden(prose)
+    assert forbidden(strip_lean_comments(prose)) is None
+
+
+@check("a case file's imports do not depend on the declaration order")
+def _():
+    from attest import runner
+    from attest.domain import LeanPackage
+    # `decide` had the domain's declared tuple order; `recheck` can only
+    # learn the SET of governed theorem modules. A domain listing two in
+    # non-alphabetical order would regenerate a different file from the one
+    # it stored — and no shipped domain has two, so it would have gone
+    # unnoticed. The order is canonical in both paths now.
+    rule = rulec.parse(SAMPLE_RULE)
+    from attest import typebridge
+    model = typebridge.parse(SAMPLE_SCHEMA)
+    snapshot = make_snapshot("h-01", "2026-10-10T00:00:00",
+                             {"holdings": []}, fact_ids=())
+    def imports(order):
+        lean = LeanPackage(directory=pathlib.Path("/x"), root_module="Acme",
+                           schema_namespace="Acme.Schema",
+                           rules_namespace="Acme.Rules",
+                           theorem_modules=order)
+        return runner.case_file(snapshot, model, rule, lean).imports
+    assert imports(("Acme.B", "Acme.A")) == imports(("Acme.A", "Acme.B"))
+    assert imports(("Acme.B", "Acme.A"))[1:] == ("Acme.A", "Acme.B")
+
+
+@check("a theorem module refused by the policy stops a decision")
+def _():
+    import tempfile
+    import types as _t
+    from attest import runner
+    from attest.domain import LeanPackage
+    from attest.typebridge import OutOfSync
+    # `check_sync` pins a theorem module's BYTES to a published artifact,
+    # but nothing ever looked at what those bytes contain — and the module
+    # is imported into every case file, so its notation and its options are
+    # in force while the case file elaborates.
+    with tempfile.TemporaryDirectory() as d:
+        root = pathlib.Path(d)
+        (root / "Acme").mkdir()
+        mod = root / "Acme" / "T.lean"
+        lean = LeanPackage(directory=root, root_module="Acme",
+                           schema_namespace="Acme.Schema",
+                           rules_namespace="Acme.Rules",
+                           theorem_modules=("Acme.T",))
+        dom = _t.SimpleNamespace(lean=lean, rule_path=None)
+        sources = [("Acme.T", "theorems", str(mod))]
+
+        mod.write_text("namespace Acme.T\ntheorem t : 1 = 1 := rfl\n"
+                       "end Acme.T\n")
+        runner.check_modules(dom, sources)          # clean: no refusal
+
+        mod.write_text('namespace Acme.T\nnotation "cheat" => True\n'
+                       "theorem t : 1 = 1 := rfl\nend Acme.T\n")
+        try:
+            runner.check_modules(dom, sources)
+        except OutOfSync as exc:
+            assert "module policy v" in str(exc), str(exc)
+            assert "notation" in str(exc), str(exc)
+        else:
+            raise AssertionError("a notation command was allowed")
+
+        # a module re-entering the rule namespace is refused too
+        mod.write_text("namespace Acme.Rules\ntheorem t : 1 = 1 := rfl\n"
+                       "end Acme.Rules\n")
+        try:
+            runner.check_modules(dom, sources)
+        except OutOfSync as exc:
+            assert "protected namespace" in str(exc), str(exc)
+        else:
+            raise AssertionError("re-entering the rule namespace was allowed")
+
+
+# ── the search boundary ─────────────────────────────────────────────
+# Static imports are not the real risk. Untrusted code that shares a
+# process with `decide` can rebind core attributes at runtime —
+# `kernel.STANDARD_AXIOMS`, `kernel.FORBIDDEN`, `Kernel.check`,
+# `runner.case_file` — and no import check would see it. These two tests
+# cover what a test CAN cover; the no-co-residence test covers the rest.
+ATTEST = pathlib.Path(__file__).resolve().parents[1] / "attest"
+
+#: things the core must not reach for, whatever the reason
+_OFF_LIMITS = ("attest.search", "z3", "hypothesis", "openai", "anthropic",
+               "litellm", "transformers")
+
+
+def _core_modules():
+    for path in sorted(ATTEST.rglob("*.py")):
+        if "search" in path.relative_to(ATTEST).parts:
+            continue
+        if "__pycache__" in path.parts:
+            continue
+        yield path
+
+
+@check("every suite in tests/ is run by the pipeline, or imported by one")
+def _():
+    # Five suites were run by nothing: both golden pins and all three
+    # search suites. Coverage nothing runs reads as coverage, and that is
+    # the worse failure, because the line in the report says it is covered.
+    #
+    # A name mentioned only in a COMMENT does not count — every suite in
+    # this tree is named in one somewhere — so the scripts are read with
+    # their comment lines stripped. A file that is neither run nor imported
+    # by something that runs is an orphan, which is what each of those five
+    # was.
+    import re
+    root = pathlib.Path(__file__).resolve().parents[1]
+    live = []
+    for name in ("check.sh", "examples.sh"):
+        for line in (root / "scripts" / name).read_text().splitlines():
+            if not line.lstrip().startswith("#"):
+                live.append(line)
+    runs = "\n".join(live)
+    files = sorted((root / "tests").glob("*.py"))
+    assert len(files) >= 15, f"only {len(files)} files in tests/"
+    sources = {path.name: path.read_text() for path in files}
+    orphans = []
+    for path in files:
+        if path.name in runs:
+            continue
+        # a helper is legitimate when a suite imports it by name
+        imported = any(
+            re.search(rf"^\s*(?:import|from)\s+{path.stem}\b", text, re.M)
+            for name, text in sources.items() if name != path.name)
+        if not imported:
+            orphans.append(path.name)
+    assert not orphans, (
+        f"{', '.join(orphans)}: in tests/ but neither run by "
+        f"scripts/check.sh or scripts/examples.sh nor imported by a suite "
+        f"that is. An unrun test reads as coverage.")
+
+
+@check("the core imports nothing from attest.search, and no solver or model")
+def _():
+    import ast
+    files = list(_core_modules())
+    assert len(files) >= 8, f"only found {len(files)} core modules"
+    for path in files:
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            for name in names:
+                for bad in _OFF_LIMITS:
+                    assert not (name == bad or name.startswith(bad + ".")), (
+                        f"{path.name}:{node.lineno} imports {name}")
+            # a dynamic import is the same thing wearing a hat
+            if isinstance(node, ast.Call):
+                fn = node.func
+                dynamic = (isinstance(fn, ast.Name)
+                           and fn.id == "__import__") or (
+                    isinstance(fn, ast.Attribute)
+                    and fn.attr == "import_module")
+                if dynamic:
+                    for arg in node.args:
+                        if isinstance(arg, ast.Constant) and \
+                                isinstance(arg.value, str):
+                            assert "search" not in arg.value, (
+                                f"{path.name}:{node.lineno} dynamically "
+                                f"imports {arg.value!r}")
+    # And the package does not offer it either. Read from the SOURCE: once
+    # anything imports `attest.search`, Python binds it as an attribute of
+    # `attest`, so `hasattr` would pass while the export list is clean.
+    #
+    # Checked by parsing, not by looking for the word: the core exports a
+    # function CALLED `search` — `runner.search`, the compiled TypeQL query
+    # — and a substring test flagged that forever.
+    tree = ast.parse((ATTEST / "__init__.py").read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            assert node.module != "search", "imports the search package"
+            if node.module is None:          # from . import X
+                for alias in node.names:
+                    assert alias.name != "search", (
+                        "attest/__init__.py imports the search package")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                assert alias.name.split(".")[-1] != "search" or \
+                    not alias.name.startswith("attest"), \
+                    "attest/__init__.py imports the search package"
+
+
+@check("search code never assigns to an attribute of a core module")
+def _():
+    import ast
+    core = {"kernel", "runner", "rulec", "typebridge", "store", "props"}
+    searched = sorted((ATTEST / "search").rglob("*.py"))
+    assert searched, "attest/search/ is empty"
+    for path in searched:
+        if "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text())
+        # what each core module is called in this file
+        local = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and \
+                    node.module.startswith("attest"):
+                tail = node.module.split(".")[-1]
+                if tail in core:
+                    local.add(tail)
+                for alias in node.names:
+                    if alias.name in core:
+                        local.add(alias.asname or alias.name)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    tail = alias.name.split(".")[-1]
+                    if alias.name.startswith("attest") and tail in core:
+                        local.add(alias.asname or tail)
+        for node in ast.walk(tree):
+            targets = []
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+                targets = [node.target]
+            for target in targets:
+                if isinstance(target, ast.Attribute) and \
+                        isinstance(target.value, ast.Name) and \
+                        target.value.id in local:
+                    raise AssertionError(
+                        f"{path.name}:{node.lineno} assigns to "
+                        f"{target.value.id}.{target.attr}; search code may "
+                        f"not rebind the core it is checked by")
+
+
 # ── compiler outputs that are stored, and must not move ─────────────
 @check("the compiler reproduces every committed Lean module and golden output")
 def _():
@@ -2049,6 +2317,8 @@ def _():
                      ("resolution", "holder")},
         "in-group": {("claim", "holder"), ("code-isa", "child")},
         "latest-high": {("reading", "holder")},
+        "latest-low": {("reading", "holder")},
+        "beta-low": {("reading", "holder")},
         "reaches": {("start-node", "holder"), ("goal-mark", "node"),
                     ("open-edge", "holder"), ("open-edge", "origin")},
         "two-parties": {("engagement", "holder")},

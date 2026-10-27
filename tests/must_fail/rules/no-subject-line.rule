@@ -1,0 +1,7 @@
+# expect: no `subject` line
+rule demo.nosubject v0.1
+says "t"
+collection rows : row for subject via item
+conclude C when
+  some row m in rows
+  require m.source = "x"

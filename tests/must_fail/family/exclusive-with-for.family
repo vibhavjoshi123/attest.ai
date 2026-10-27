@@ -1,0 +1,4 @@
+# expect: takes no `for`
+family d.x
+  says "t"
+  exclusive: a, b for readings

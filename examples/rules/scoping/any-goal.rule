@@ -1,0 +1,13 @@
+# A rule over global reference facts only: no collection is scoped to the
+# subject. Its search function used to leave `$subject` unused, which
+# TypeDB refuses, so such a rule could not be deployed at all.
+
+rule scoping.any-goal v0.1
+says "At least one goal node is marked in the shared catalog."
+
+subject sample
+
+collection goals : goal-mark
+
+conclude AnyGoal when
+  some goal-mark g in goals

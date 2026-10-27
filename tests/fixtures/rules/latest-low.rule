@@ -1,0 +1,25 @@
+# The other branch of the alpha band: the holder's latest alpha reading is
+# BELOW 70. Deliberately not "not latest-high": a holder with no alpha
+# reading, or only a stale one, is in neither branch, and both rules simply
+# fail to fire.
+
+rule fixture.latest-low v0.1
+says "The holder's most recent alpha reading in the last 180 days is below 70."
+
+subject holder
+
+collection readings : reading for subject via holder
+
+conclude LatestLow when
+  some reading r in readings
+  require r.test-code = alpha
+  require r.amount < 70
+  require r.taken-day >= as-of-day - 180
+  require r.taken-day <= as-of-day
+  none of
+    some reading n in readings
+    require n.test-code = alpha
+    require n.fact-id != r.fact-id
+    require n.taken-day >= r.taken-day
+    require n.taken-day <= as-of-day
+    require n.amount != r.amount

@@ -1,0 +1,27 @@
+# Sanctions screening example, on the attest core (illustrative, not legal
+# guidance). Same core, different facts: nothing in attest/ changes.
+define
+  attribute lei, value string;
+  attribute contract-ref, value string;
+  attribute regime, value string;
+  attribute list-status, value string @values("active", "delisted");
+
+  # One player type for both ends of `ownership`, so the closure is typed
+  # over `party` and can walk owned -> owner -> owner ...
+  entity party sub subject,
+    owns lei @key,
+    plays ownership:owned,
+    plays ownership:owner,
+    plays listing:party,
+    plays engagement:vendor;
+
+  relation engagement sub fact,
+    relates vendor @card(1..1),
+    owns contract-ref @card(1..1);
+  relation ownership sub fact,
+    relates owned @card(1..1),
+    relates owner @card(1..1);
+  relation listing sub fact,
+    relates party @card(1..1),
+    owns regime @card(1..1),
+    owns list-status @card(1..1);

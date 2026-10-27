@@ -1,0 +1,1249 @@
+{
+ "count": 20,
+ "draws": [
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k2",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k1",
+      "fact-id": "f002",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s2",
+      "fact-id": "f003",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f004",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f005",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f006",
+      "party": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f007",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": []
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 0,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k3",
+      "fact-id": "f001",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [],
+    "ownerships": [
+     {
+      "fact-id": "f002",
+      "owned": "k2",
+      "owner": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f003",
+      "owned": "s2",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f004",
+      "owned": "k2",
+      "owner": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 1,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [],
+    "listings": [],
+    "ownerships": []
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 2,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k3",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f005",
+      "party": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f006",
+      "party": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f007",
+      "party": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f002",
+      "owned": "active",
+      "owner": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f003",
+      "owned": "s1",
+      "owner": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f004",
+      "owned": "s2",
+      "owner": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 3,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [],
+    "ownerships": []
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 4,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "active",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k2",
+      "fact-id": "f003",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s2",
+      "fact-id": "f004",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f008",
+      "party": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f009",
+      "party": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f010",
+      "party": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f005",
+      "owned": "k3",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f006",
+      "owned": "s1",
+      "owner": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f007",
+      "owned": "k1",
+      "owner": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 5,
+   "witnesses": [
+    [
+     "f001",
+     "f008"
+    ],
+    [
+     "f001",
+     "f010"
+    ],
+    [
+     "f004",
+     "f008"
+    ],
+    [
+     "f004",
+     "f010"
+    ]
+   ]
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "s1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s2",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "active",
+      "fact-id": "f003",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s2",
+      "fact-id": "f004",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f009",
+      "party": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f010",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f005",
+      "owned": "active",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f006",
+      "owned": "k3",
+      "owner": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f007",
+      "owned": "k1",
+      "owner": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f008",
+      "owned": "active",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 6,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "s2",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k3",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f007",
+      "party": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f008",
+      "party": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f009",
+      "party": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f010",
+      "party": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f003",
+      "owned": "s2",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f004",
+      "owned": "k2",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f005",
+      "owned": "k3",
+      "owner": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f006",
+      "owned": "k3",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 7,
+   "witnesses": [
+    [
+     "f001",
+     "f008"
+    ],
+    [
+     "f002",
+     "f008"
+    ],
+    [
+     "f002",
+     "f010"
+    ]
+   ]
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k1",
+      "fact-id": "f001",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [],
+    "ownerships": []
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 8,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k3",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "active",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k3",
+      "fact-id": "f003",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f004",
+      "party": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f005",
+      "party": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f006",
+      "party": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": []
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 9,
+   "witnesses": [
+    [
+     "f002",
+     "f005"
+    ]
+   ]
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "s1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k2",
+      "fact-id": "f002",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s2",
+      "fact-id": "f003",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s2",
+      "fact-id": "f004",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f005",
+      "party": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f006",
+      "party": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f007",
+      "party": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     }
+    ],
+    "ownerships": []
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 10,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k3",
+      "fact-id": "f001",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k3",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k3",
+      "fact-id": "f003",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [],
+    "ownerships": [
+     {
+      "fact-id": "f004",
+      "owned": "s1",
+      "owner": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 11,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k2",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "active",
+      "fact-id": "f003",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f005",
+      "party": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f004",
+      "owned": "k3",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 12,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s2",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [],
+    "ownerships": [
+     {
+      "fact-id": "f003",
+      "owned": "active",
+      "owner": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 13,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [],
+    "listings": [
+     {
+      "fact-id": "f005",
+      "party": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     },
+     {
+      "fact-id": "f006",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f007",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f001",
+      "owned": "active",
+      "owner": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f002",
+      "owned": "s2",
+      "owner": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f003",
+      "owned": "k1",
+      "owner": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f004",
+      "owned": "k2",
+      "owner": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 14,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "s1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "active",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f003",
+      "party": "active",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f002",
+      "owned": "s1",
+      "owner": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 15,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k2",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s1",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f004",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f005",
+      "party": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f003",
+      "owned": "active",
+      "owner": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 16,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "k2",
+      "fact-id": "f001",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "active",
+      "fact-id": "f002",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "s1",
+      "fact-id": "f003",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "counterparty": "k3",
+      "fact-id": "f004",
+      "holder": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "y",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [
+     {
+      "fact-id": "f008",
+      "party": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f005",
+      "owned": "s2",
+      "owner": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f006",
+      "owned": "s2",
+      "owner": "s2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f007",
+      "owned": "k3",
+      "owner": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 17,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [
+     {
+      "counterparty": "s1",
+      "fact-id": "f001",
+      "holder": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "ref": "x",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ],
+    "listings": [],
+    "ownerships": [
+     {
+      "fact-id": "f002",
+      "owned": "active",
+      "owner": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f003",
+      "owned": "k1",
+      "owner": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f004",
+      "owned": "s2",
+      "owner": "k1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 18,
+   "witnesses": []
+  },
+  {
+   "as_of_day": 20000,
+   "data": {
+    "engagements": [],
+    "listings": [
+     {
+      "fact-id": "f005",
+      "party": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "lifted"
+     },
+     {
+      "fact-id": "f006",
+      "party": "s1",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src",
+      "status": "active"
+     }
+    ],
+    "ownerships": [
+     {
+      "fact-id": "f001",
+      "owned": "s1",
+      "owner": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f002",
+      "owned": "k1",
+      "owner": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f003",
+      "owned": "s2",
+      "owner": "k3",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     },
+     {
+      "fact-id": "f004",
+      "owned": "k1",
+      "owner": "k2",
+      "recorded-at": "2026-01-01T00:00:00",
+      "retracted-at": null,
+      "source": "src"
+     }
+    ]
+   },
+   "scopes": {
+    "subject": "s1"
+   },
+   "seed": 19,
+   "witnesses": []
+  }
+ ],
+ "rule": "tests/fixtures/rules/blocked.rule"
+}

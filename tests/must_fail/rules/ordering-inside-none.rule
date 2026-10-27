@@ -1,0 +1,16 @@
+# expect: orders a non-numeric value
+# stage: compile
+# An ordering on an enum, as in ordering-on-enum.rule, but written inside a
+# `none of`. Every check that walks a rule has to reach into negations: they
+# are where a rule writes its hardest conditions, and a check that stops at
+# the top level exempts them.
+rule demo.order-nested v0.1
+says "x"
+subject holder
+collection readings : measurement for subject via of
+conclude Hit when
+  some measurement m in readings
+  require m.test-code = a
+  none of
+    some measurement n in readings
+    require n.test-code >= a

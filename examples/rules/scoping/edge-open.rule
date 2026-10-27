@@ -1,0 +1,22 @@
+# An edge is open for a sample when none of its criteria lacks a
+# resolved-true resolution. The resolutions are read under TWO negations,
+# so they support the verdict positively: retracting one must flag it.
+
+rule scoping.edge-open v0.1
+says "The edge is open for the sample when every criterion of the edge has a resolved-true resolution for the sample."
+
+subject sample
+parameter edge : edge-def
+
+collection marks : edge-mark  for edge via edge
+collection crits : criterion  for edge via edge
+collection resols : resolution for subject via sample
+
+conclude EdgeOpen when
+  some edge-mark m in marks
+  none of
+    some criterion c in crits
+    none of
+      some resolution v in resols
+      require v.crit-key = c.crit-key
+      require v.state = resolved-true
